@@ -1,9 +1,7 @@
 /**
  * Generative Model Explainer Engine
- * Clean Canvas + Target Preview Blended Neighbors!
- * Canvas points keep simple single breed names. 
- * ONLY UNDER the right-side Target Image Preview, shows which 2 nearby cat breeds were added/blended 
- * (e.g. "★ 최종 생성: 삼색이 (인근 융합: + 샴 냥이, + 러시안블루)")!
+ * Pure Korean Clean Captions: Removes all English text and removes '인근융합' label.
+ * Under the cat image, renders cleanly: "★ 최종 생성: 삼색이 + 샴 냥이 + 러시안블루"
  */
 
 function mulberry32(a) {
@@ -101,14 +99,14 @@ class ExplainerStudio {
 
     this.seedSlider.addEventListener('input', (e) => {
       this.seed = parseInt(e.target.value);
-      this.seedBadge.textContent = `Seed #${this.seed}`;
+      this.seedBadge.textContent = `시드 #${this.seed}`;
       this.generateSeedData();
     });
 
     this.btnRandomSeed.addEventListener('click', () => {
       this.seed = Math.floor(Math.random() * 999) + 1;
       this.seedSlider.value = this.seed;
-      this.seedBadge.textContent = `Seed #${this.seed}`;
+      this.seedBadge.textContent = `시드 #${this.seed}`;
       this.generateSeedData();
     });
 
@@ -163,72 +161,73 @@ class ExplainerStudio {
     const rng = mulberry32(this.seed * 9999 + (this.prompt === 'cat' ? 100 : this.prompt === 'dog' ? 200 : 300));
     this.noiseGrid = [];
 
+    // Pure Korean Names ONLY (No English text in parentheses!)
     const richPools = {
       cat: [
-        { id: 0, name: '페르시안 고양이 (Persian)', shortName: '페르시안', color: '#e2e8f0', pattern: 'fluffy' },
-        { id: 1, name: '치즈 냥이 (Orange Tabby)', shortName: '치즈 냥이', color: '#f59e0b', pattern: 'stripes' },
-        { id: 2, name: '검은 고양이 (Black Cat)', shortName: '검은 냥이', color: '#334155', pattern: 'dark' },
-        { id: 3, name: '러시안 블루 (Russian Blue)', shortName: '러시안블루', color: '#6366f1', pattern: 'blue' },
-        { id: 4, name: '삼색이 (Calico Cat)', shortName: '삼색이', color: '#ec4899', pattern: 'calico' },
-        { id: 5, name: '샴 고양이 (Siamese Cat)', shortName: '샴 냥이', color: '#fcd34d', pattern: 'mask' },
-        { id: 6, name: '스핑크스 냥이 (Sphynx Cat)', shortName: '스핑크스', color: '#f43f5e', pattern: 'pink' },
-        { id: 7, name: '뱅갈 고양이 (Bengal Cat)', shortName: '뱅갈 냥이', color: '#eab308', pattern: 'spots' },
-        { id: 8, name: '코리안 숏헤어 (Korean Shorthair)', shortName: '코숏 냥이', color: '#38bdf8', pattern: 'short' },
-        { id: 9, name: '스코티시 폴드 (Scottish Fold)', shortName: '스코티시', color: '#a855f7', pattern: 'folded' },
-        { id: 10, name: '메인쿤 고양이 (Maine Coon)', shortName: '메인쿤', color: '#d97706', pattern: 'fluffy' },
-        { id: 11, name: '렉돌 고양이 (Ragdoll)', shortName: '렉돌 냥이', color: '#38bdf8', pattern: 'mask' },
-        { id: 12, name: '먼치킨 고양이 (Munchkin)', shortName: '먼치킨', color: '#f43f5e', pattern: 'short' },
-        { id: 13, name: '브리티시 숏헤어 (British)', shortName: '브리티시', color: '#94a3b8', pattern: 'blue' },
-        { id: 14, name: '아비시니안 (Abyssinian)', shortName: '아비시니안', color: '#ca8a04', pattern: 'stripes' },
-        { id: 15, name: '노르웨이 숲 (Norwegian Forest)', shortName: '노르웨이숲', color: '#16a34a', pattern: 'fluffy' },
-        { id: 16, name: '터키시 앙고라 (Turkish Angora)', shortName: '터키시앙고라', color: '#ffffff', pattern: 'fluffy' },
-        { id: 17, name: '버만 고양이 (Birman)', shortName: '버만 냥이', color: '#fb7185', pattern: 'mask' },
-        { id: 18, name: '샤르트뢰 고양이 (Chartreux)', shortName: '샤르트뢰', color: '#475569', pattern: 'blue' },
-        { id: 19, name: '엑조틱 숏헤어 (Exotic Shorthair)', shortName: '엑조틱', color: '#f97316', pattern: 'folded' }
+        { id: 0, name: '페르시안 고양이', shortName: '페르시안', color: '#e2e8f0', pattern: 'fluffy' },
+        { id: 1, name: '치즈 냥이', shortName: '치즈 냥이', color: '#f59e0b', pattern: 'stripes' },
+        { id: 2, name: '검은 고양이', shortName: '검은 냥이', color: '#334155', pattern: 'dark' },
+        { id: 3, name: '러시안 블루', shortName: '러시안블루', color: '#6366f1', pattern: 'blue' },
+        { id: 4, name: '삼색이', shortName: '삼색이', color: '#ec4899', pattern: 'calico' },
+        { id: 5, name: '샴 고양이', shortName: '샴 냥이', color: '#fcd34d', pattern: 'mask' },
+        { id: 6, name: '스핑크스 냥이', shortName: '스핑크스', color: '#f43f5e', pattern: 'pink' },
+        { id: 7, name: '뱅갈 고양이', shortName: '뱅갈 냥이', color: '#eab308', pattern: 'spots' },
+        { id: 8, name: '코리안 숏헤어', shortName: '코숏 냥이', color: '#38bdf8', pattern: 'short' },
+        { id: 9, name: '스코티시 폴드', shortName: '스코티시', color: '#a855f7', pattern: 'folded' },
+        { id: 10, name: '메인쿤 고양이', shortName: '메인쿤', color: '#d97706', pattern: 'fluffy' },
+        { id: 11, name: '렉돌 고양이', shortName: '렉돌 냥이', color: '#38bdf8', pattern: 'mask' },
+        { id: 12, name: '먼치킨 고양이', shortName: '먼치킨', color: '#f43f5e', pattern: 'short' },
+        { id: 13, name: '브리티시 숏헤어', shortName: '브리티시', color: '#94a3b8', pattern: 'blue' },
+        { id: 14, name: '아비시니안', shortName: '아비시니안', color: '#ca8a04', pattern: 'stripes' },
+        { id: 15, name: '노르웨이 숲', shortName: '노르웨이숲', color: '#16a34a', pattern: 'fluffy' },
+        { id: 16, name: '터키시 앙고라', shortName: '터키시앙고라', color: '#ffffff', pattern: 'fluffy' },
+        { id: 17, name: '버만 고양이', shortName: '버만 냥이', color: '#fb7185', pattern: 'mask' },
+        { id: 18, name: '샤르트뢰 고양이', shortName: '샤르트뢰', color: '#475569', pattern: 'blue' },
+        { id: 19, name: '엑조틱 숏헤어', shortName: '엑조틱', color: '#f97316', pattern: 'folded' }
       ],
       dog: [
-        { id: 0, name: '시바견 (Shiba Inu)', shortName: '시바견', color: '#f59e0b', pattern: 'shiba' },
-        { id: 1, name: '골든 리트리버 (Retriever)', shortName: '리트리버', color: '#eab308', pattern: 'golden' },
-        { id: 2, name: '포메라니안 (Pomeranian)', shortName: '포메라니안', color: '#ec4899', pattern: 'pome' },
-        { id: 3, name: '시베리안 허스키 (Husky)', shortName: '허스키', color: '#38bdf8', pattern: 'husky' },
-        { id: 4, name: '토이 푸들 (Poodle)', shortName: '토이푸들', color: '#a855f7', pattern: 'poodle' },
-        { id: 5, name: '비숑 프리제 (Bichon Frise)', shortName: '비숑프리제', color: '#ffffff', pattern: 'bichon' },
-        { id: 6, name: '웰시 코기 (Welsh Corgi)', shortName: '웰시코기', color: '#f97316', pattern: 'corgi' },
-        { id: 7, name: '닥스훈트 (Dachshund)', shortName: '닥스훈트', color: '#78350f', pattern: 'long' },
-        { id: 8, name: '달마시안 (Dalmatian)', shortName: '달마시안', color: '#06b6d4', pattern: 'spots' },
-        { id: 9, name: '말티즈 (Maltese)', shortName: '말티즈', color: '#f8fafc', pattern: 'bichon' },
-        { id: 10, name: '프렌치 불독 (French Bulldog)', shortName: '프렌치불독', color: '#475569', pattern: 'shiba' },
-        { id: 11, name: '슈나우저 (Schnauzer)', shortName: '슈나우저', color: '#64748b', pattern: 'husky' },
-        { id: 12, name: '사모예드 (Samoyed)', shortName: '사모예드', color: '#ffffff', pattern: 'pome' },
-        { id: 13, name: '셰퍼드 (German Shepherd)', shortName: '셰퍼드', color: '#9a3412', pattern: 'shiba' },
-        { id: 14, name: '비글 (Beagle)', shortName: '비글', color: '#ea580c', pattern: 'corgi' },
-        { id: 15, name: '보더 콜리 (Border Collie)', shortName: '보더콜리', color: '#1e293b', pattern: 'husky' },
-        { id: 16, name: '치와와 (Chihuahua)', shortName: '치와와', color: '#fde047', pattern: 'pome' },
-        { id: 17, name: '요크셔 테리어 (Yorkshire)', shortName: '요크셔', color: '#ca8a04', pattern: 'poodle' },
-        { id: 18, name: '도베르만 (Doberman)', shortName: '도베르만', color: '#090d16', pattern: 'shiba' },
-        { id: 19, name: '스피츠 (Japanese Spitz)', shortName: '스피츠', color: '#f1f5f9', pattern: 'pome' }
+        { id: 0, name: '시바견', shortName: '시바견', color: '#f59e0b', pattern: 'shiba' },
+        { id: 1, name: '골든 리트리버', shortName: '리트리버', color: '#eab308', pattern: 'golden' },
+        { id: 2, name: '포메라니안', shortName: '포메라니안', color: '#ec4899', pattern: 'pome' },
+        { id: 3, name: '시베리안 허스키', shortName: '허스키', color: '#38bdf8', pattern: 'husky' },
+        { id: 4, name: '토이 푸들', shortName: '토이푸들', color: '#a855f7', pattern: 'poodle' },
+        { id: 5, name: '비숑 프리제', shortName: '비숑프리제', color: '#ffffff', pattern: 'bichon' },
+        { id: 6, name: '웰시 코기', shortName: '웰시코기', color: '#f97316', pattern: 'corgi' },
+        { id: 7, name: '닥스훈트', shortName: '닥스훈트', color: '#78350f', pattern: 'long' },
+        { id: 8, name: '달마시안', shortName: '달마시안', color: '#06b6d4', pattern: 'spots' },
+        { id: 9, name: '말티즈', shortName: '말티즈', color: '#f8fafc', pattern: 'bichon' },
+        { id: 10, name: '프렌치 불독', shortName: '프렌치불독', color: '#475569', pattern: 'shiba' },
+        { id: 11, name: '슈나우저', shortName: '슈나우저', color: '#64748b', pattern: 'husky' },
+        { id: 12, name: '사모예드', shortName: '사모예드', color: '#ffffff', pattern: 'pome' },
+        { id: 13, name: '셰퍼드', shortName: '셰퍼드', color: '#9a3412', pattern: 'shiba' },
+        { id: 14, name: '비글', shortName: '비글', color: '#ea580c', pattern: 'corgi' },
+        { id: 15, name: '보더 콜리', shortName: '보더콜리', color: '#1e293b', pattern: 'husky' },
+        { id: 16, name: '치와와', shortName: '치와와', color: '#fde047', pattern: 'pome' },
+        { id: 17, name: '요크셔 테리어', shortName: '요크셔', color: '#ca8a04', pattern: 'poodle' },
+        { id: 18, name: '도베르만', shortName: '도베르만', color: '#090d16', pattern: 'shiba' },
+        { id: 19, name: '스피츠', shortName: '스피츠', color: '#f1f5f9', pattern: 'pome' }
       ],
       car: [
-        { id: 0, name: '레드 슈퍼카 (Red Supercar)', shortName: '레드슈퍼카', color: '#f43f5e', pattern: 'super' },
-        { id: 1, name: '사이버 트럭 (Cyber Truck)', shortName: '사이버트럭', color: '#94a3b8', pattern: 'truck' },
-        { id: 2, name: '클래식 세단 (Classic Sedan)', shortName: '클래식세단', color: '#3b82f6', pattern: 'sedan' },
-        { id: 3, name: '오프로드 SUV (Offroad SUV)', shortName: '오프로드SUV', color: '#84cc16', pattern: 'suv' },
-        { id: 4, name: '미래형 컨셉카 (Concept Car)', shortName: '컨셉카', color: '#a855f7', pattern: 'concept' },
-        { id: 5, name: 'F1 레이싱카 (Formula 1)', shortName: 'F1레이싱카', color: '#eab308', pattern: 'f1' },
-        { id: 6, name: '옐로우 컨버터블 (Convertible)', shortName: '컨버터블', color: '#ec4899', pattern: 'open' },
-        { id: 7, name: '빈티지 로드스터 (Roadster)', shortName: '로드스터', color: '#f97316', pattern: 'vintage' },
-        { id: 8, name: '전기 럭셔리 픽업 (Pickup)', shortName: '전기픽업', color: '#0ea5e9', pattern: 'truck' },
-        { id: 9, name: '에어로 하이퍼카 (Hypercar)', shortName: '하이퍼카', color: '#10b981', pattern: 'super' },
-        { id: 10, name: '랠리 크로스카 (Rally Car)', shortName: '랠리카', color: '#facc15', pattern: 'f1' },
-        { id: 11, name: '몬스터 트럭 (Monster Truck)', shortName: '몬스터트럭', color: '#ef4444', pattern: 'suv' },
-        { id: 12, name: '미니 쿠퍼 (Mini Cooper)', shortName: '미니쿠퍼', color: '#06b6d4', pattern: 'sedan' },
-        { id: 13, name: '경찰 파트롤 세단 (Police)', shortName: '경찰세단', color: '#38bdf8', pattern: 'sedan' },
-        { id: 14, name: '소방 구급 트럭 (Fire Truck)', shortName: '소방트럭', color: '#dc2626', pattern: 'truck' },
-        { id: 15, name: '옐로우 택시 (Yellow Cab)', shortName: '옐로우택시', color: '#eab308', pattern: 'sedan' },
-        { id: 16, name: '스쿨 버스 (School Bus)', shortName: '스쿨버스', color: '#f59e0b', pattern: 'suv' },
-        { id: 17, name: '캠핑 버스 (Camper Van)', shortName: '캠핑버스', color: '#84cc16', pattern: 'suv' },
-        { id: 18, name: '자율주행 로보택시 (Robotaxi)', shortName: '로보택시', color: '#a855f7', pattern: 'concept' },
-        { id: 19, name: '스노우 모빌 (Snowmobile)', shortName: '스노우모빌', color: '#e2e8f0', pattern: 'concept' }
+        { id: 0, name: '레드 슈퍼카', shortName: '레드슈퍼카', color: '#f43f5e', pattern: 'super' },
+        { id: 1, name: '사이버 트럭', shortName: '사이버트럭', color: '#94a3b8', pattern: 'truck' },
+        { id: 2, name: '클래식 세단', shortName: '클래식세단', color: '#3b82f6', pattern: 'sedan' },
+        { id: 3, name: '오프로드 SUV', shortName: '오프로드SUV', color: '#84cc16', pattern: 'suv' },
+        { id: 4, name: '미래형 컨셉카', shortName: '컨셉카', color: '#a855f7', pattern: 'concept' },
+        { id: 5, name: 'F1 레이싱카', shortName: 'F1레이싱카', color: '#eab308', pattern: 'f1' },
+        { id: 6, name: '옐로우 컨버터블', shortName: '컨버터블', color: '#ec4899', pattern: 'open' },
+        { id: 7, name: '빈티지 로드스터', shortName: '로드스터', color: '#f97316', pattern: 'vintage' },
+        { id: 8, name: '전기 럭셔리 픽업', shortName: '전기픽업', color: '#0ea5e9', pattern: 'truck' },
+        { id: 9, name: '에어로 하이퍼카', shortName: '하이퍼카', color: '#10b981', pattern: 'super' },
+        { id: 10, name: '랠리 크로스카', shortName: '랠리카', color: '#facc15', pattern: 'f1' },
+        { id: 11, name: '몬스터 트럭', shortName: '몬스터트럭', color: '#ef4444', pattern: 'suv' },
+        { id: 12, name: '미니 쿠퍼', shortName: '미니쿠퍼', color: '#06b6d4', pattern: 'sedan' },
+        { id: 13, name: '경찰 파트롤 세단', shortName: '경찰세단', color: '#38bdf8', pattern: 'sedan' },
+        { id: 14, name: '소방 구급 트럭', shortName: '소방트럭', color: '#dc2626', pattern: 'truck' },
+        { id: 15, name: '옐로우 택시', shortName: '옐로우택시', color: '#eab308', pattern: 'sedan' },
+        { id: 16, name: '스쿨 버스', shortName: '스쿨버스', color: '#f59e0b', pattern: 'suv' },
+        { id: 17, name: '캠핑 버스', shortName: '캠핑버스', color: '#84cc16', pattern: 'suv' },
+        { id: 18, name: '자율주행 로보택시', shortName: '로보택시', color: '#a855f7', pattern: 'concept' },
+        { id: 19, name: '스노우 모빌', shortName: '스노우모빌', color: '#e2e8f0', pattern: 'concept' }
       ]
     };
 
@@ -316,7 +315,7 @@ class ExplainerStudio {
     });
   }
 
-  // Get 2 Nearby Neighbor Breed Names for Preview Card Caption ONLY!
+  // Pure Clean Blend String (NO "인근융합" label, NO English!) -> e.g. " + 샴 냥이 + 러시안블루"
   getTwoNearbyNeighborNames(targetBreedData) {
     if (!targetBreedData || !this.fixedBreedMap) return '';
 
@@ -333,8 +332,8 @@ class ExplainerStudio {
     const neighbor1 = sortedNeighbors[0] ? sortedNeighbors[0].shortName : '';
     const neighbor2 = sortedNeighbors[1] ? sortedNeighbors[1].shortName : '';
 
-    if (neighbor1 && neighbor2) return ` (인근 융합: + ${neighbor1}, + ${neighbor2})`;
-    if (neighbor1) return ` (인근 융합: + ${neighbor1})`;
+    if (neighbor1 && neighbor2) return ` + ${neighbor1} + ${neighbor2}`;
+    if (neighbor1) return ` + ${neighbor1}`;
     return '';
   }
 
@@ -419,10 +418,10 @@ class ExplainerStudio {
     this.winningBreed = activeBreed;
 
     const confidence = Math.max(0, Math.min(100, Math.floor(100 - (minDist / 1.8))));
-    const mainShortName = activeBreed.shortName || activeBreed.breedName.split(' ')[0];
+    const mainShortName = activeBreed.shortName || activeBreed.breedName;
     const neighborText = this.getTwoNearbyNeighborNames(activeBreed);
 
-    this.selectedCellName.textContent = `${cell.name} 임베딩 (Seed #${this.seed})`;
+    this.selectedCellName.textContent = `${cell.name} 임베딩 (시드 #${this.seed})`;
     this.selectedCellVal.textContent = `초기 노이즈 z0 [${cell.r}, ${cell.g}, ${cell.b}]`;
     this.selectedCellTarget.textContent = `${cell.breedName}`;
 
@@ -593,7 +592,7 @@ class ExplainerStudio {
     }
   }
 
-  // RENDER TARGET IMAGE PREVIEW CARD WITH BLENDED NEIGHBOR NAMES ONLY UNDER THE CAT IMAGE!
+  // RENDER TARGET IMAGE PREVIEW CARD CAPTION: PURE KOREAN ONLY (e.g. "★ 최종 생성: 삼색이 + 샴 냥이 + 러시안블루")
   renderTargetImage() {
     const breedData = this.getActivePredictedBreed(this.currentTime) || this.noiseGrid[this.selectedCellIndex];
     if (!breedData) return;
@@ -607,7 +606,7 @@ class ExplainerStudio {
     this.drawDenoisedCatOnContext(ctx, w, h, breedData, this.currentTime);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '700 11px Outfit';
+    ctx.font = '700 12px Outfit';
     ctx.textAlign = 'center';
 
     const mainShortName = breedData.shortName || breedData.breedName;
@@ -615,9 +614,9 @@ class ExplainerStudio {
 
     const isDiff = this.algorithm === 'diff';
     const isEarly = this.currentTime < 0.85;
-    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 디노이징 예측] ` : '★ 최종 생성: ';
+    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '★ 최종 생성: ';
     
-    // Shows main breed + 2 nearby merged neighbors ONLY UNDER THE CAT IMAGE!
+    // Pure Clean Korean: "★ 최종 생성: 삼색이 + 샴 냥이 + 러시안블루"
     ctx.fillText(`${labelPrefix}${mainShortName}${neighborText}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
@@ -746,7 +745,7 @@ class ExplainerStudio {
 
         ctx.fillStyle = isWinner ? '#ffffff' : '#9ca3af';
         ctx.font = isWinner ? '700 11px Outfit' : '500 10px Outfit';
-        ctx.fillText(`${isWinner ? '🔥 ' : ''}${breedCluster.shortName || breedCluster.name.split(' ')[0]}`, breedCluster.x1.x - 14, breedCluster.x1.y - 20);
+        ctx.fillText(`${isWinner ? '🔥 ' : ''}${breedCluster.shortName}`, breedCluster.x1.x - 14, breedCluster.x1.y - 20);
         ctx.restore();
       });
     }
@@ -763,7 +762,7 @@ class ExplainerStudio {
 
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '600 12px JetBrains Mono';
-    ctx.fillText(`초기 노이즈 z0 (Seed #${this.seed})`, w * 0.06, h * 0.33);
+    ctx.fillText(`초기 노이즈 z0 (시드 #${this.seed})`, w * 0.06, h * 0.33);
     ctx.restore();
 
     // 5. RENDER TRAJECTORIES & CLEAN SINGLE BREED NAME VECTOR BADGES (e.g. v_삼색이 [+42.1, -15.8])
@@ -830,7 +829,7 @@ class ExplainerStudio {
         this.drawArrowHead(ctx, pos.x, pos.y, endX, endY, arrowColor, strokeW);
 
         const realtimeTarget = this.getRealtimeParticleTarget(cell, this.currentTime, idx);
-        const singleBreedName = isFlow ? cell.name : (realtimeTarget.shortName || realtimeTarget.name.split(' ')[0]);
+        const singleBreedName = isFlow ? cell.name : (realtimeTarget.shortName || realtimeTarget.name);
 
         ctx.save();
         ctx.fillStyle = arrowColor;
