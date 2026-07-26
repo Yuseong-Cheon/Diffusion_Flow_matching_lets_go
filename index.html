@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diffusion SDE & Flow Matching Explainer | 속도장 벡터 v_t 시각화</title>
+  <meta name="description" content="Interactive visualization of Constant Velocity Field in Flow Matching vs Dynamically Swinging Score/Drift Vector in Diffusion SDE.">
+  
+  <!-- Google Fonts & Lucide Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon"><i data-lucide="network"></i></div>
+        <div>
+          <h1>Generative Model Explainer</h1>
+          <p class="subtitle">고정 속도장(Flow Matching $v$) vs 실시간 회전 속도장(Diffusion SDE $v_t$) 비교 시각화</p>
+        </div>
+      </div>
+      <div class="header-controls">
+        <div class="prompt-selector">
+          <label><i data-lucide="sparkles"></i> 조건 프롬프트:</label>
+          <select id="prompt-select" class="form-control-sm">
+            <option value="cat" selected>🐱 "고양이 (Cat)"</option>
+            <option value="dog">🐶 "강아지 (Dog)"</option>
+            <option value="car">🚗 "자동차 (Car)"</option>
+          </select>
+        </div>
+        <button id="btn-export-video" class="btn btn-primary glow-button">
+          <i data-lucide="video"></i> HD 영상 다운로드 (WebM)
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Explainer Layout -->
+    <main class="explainer-grid">
+      <!-- 1. Left Panel: 3x3 Noise Grid & Seed Control -->
+      <aside class="panel card">
+        <div class="panel-header">
+          <h3><i data-lucide="grid"></i> 1. 초기 노이즈 ($z_0 \sim \mathcal{N}(0, I)$)</h3>
+          <span class="badge badge-seed" id="seed-badge">Seed #42</span>
+        </div>
+
+        <div class="seed-control-box">
+          <label for="seed-slider">시드(Seed) 값 변경:</label>
+          <div class="seed-input-row">
+            <input type="range" id="seed-slider" min="1" max="999" value="42">
+            <button id="btn-random-seed" class="btn btn-sm btn-accent"><i data-lucide="shuffle"></i> 랜덤 시드</button>
+          </div>
+          <p class="help-text">초기 시드가 달라지면 3x3 초기 노이즈 고정값 $z_0$와 수렴 목적지가 변경됩니다.</p>
+        </div>
+
+        <!-- 3x3 Noise Grid Matrix (A~I) - Reverted to Static z0 Initial Noise -->
+        <div class="noise-matrix-container">
+          <div class="matrix-label">3x3 RGB 초기 노이즈 매트릭스 (z0 고정)</div>
+          <div class="matrix-grid" id="noise-matrix-grid">
+            <!-- Rendered by JS: Cells A, B, C, D, E, F, G, H, I -->
+          </div>
+        </div>
+
+        <!-- Selected Cell Detail -->
+        <div class="cell-detail-box card-inner">
+          <div class="detail-title">선택된 노이즈 관측점: <strong id="selected-cell-name">A 셀</strong></div>
+          <div class="detail-latent" id="selected-cell-val">RGB [182, 45, 210]</div>
+          <div class="detail-target">매핑 목적지: <span id="selected-cell-target" class="highlight-target">A: 페르시안 고양이</span></div>
+        </div>
+
+        <!-- 3x3 Grid Evolution (t=0 -> t=0.5 -> t=1.0) -->
+        <div class="evolution-box">
+          <div class="matrix-label">3x3 디노이징 수렴 단계</div>
+          <div class="evolution-steps">
+            <div class="evo-step">
+              <canvas id="evo-canvas-0" width="60" height="60"></canvas>
+              <span>t = 0 (Noise)</span>
+            </div>
+            <div class="evo-arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="evo-step">
+              <canvas id="evo-canvas-5" width="60" height="60"></canvas>
+              <span>t = 0.5</span>
+            </div>
+            <div class="evo-arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="evo-step">
+              <canvas id="evo-canvas-10" width="60" height="60"></canvas>
+              <span>t = 1.0 (Image)</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 2. Center Panel: Hierarchical Data Distribution Manifold Canvas -->
+      <section class="panel card center-panel">
+        <div class="panel-header">
+          <h3><i data-lucide="map"></i> 2. 속도장 벡터 $\vec{v}_t$ & 확률 밀도 분포 캔버스</h3>
+          <div class="algo-toggle-group">
+            <button id="btn-mode-flow" class="btn btn-sm btn-algo active">
+              <span class="solid-line-icon">━━</span> Flow Matching (고정 속도장 v)
+            </button>
+            <button id="btn-mode-diff" class="btn btn-sm btn-algo">
+              <span class="dashed-line-icon">┈┈</span> Diffusion SDE (실시간 회전 속도장 v_t)
+            </button>
+          </div>
+        </div>
+
+        <div class="canvas-container" id="canvas-wrapper">
+          <canvas id="manifold-canvas" width="800" height="520"></canvas>
+          <div class="recording-badge hidden" id="rec-badge">
+            <span class="pulse-dot"></span> 녹화 중... <span id="rec-timer">0.0s</span>
+          </div>
+          
+          <div class="manifold-overlay-legend">
+            <div class="legend-item"><span class="legend-color legend-outer"></span> 전체 분포 $p(x)$</div>
+            <div class="legend-item"><span class="legend-color legend-mid"></span> 조건 분포 $p(x|\text{프롬프트})$</div>
+            <div class="legend-item"><span class="legend-color legend-vector"></span> ➔ 속도장 벡터 $\vec{v}_t$</div>
+            <div class="legend-item"><span class="legend-color legend-winner"></span> 🔥 우세 품종</div>
+          </div>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="playback-bar">
+          <button id="btn-play-pause" class="btn btn-icon btn-accent">
+            <i data-lucide="play"></i>
+          </button>
+          <button id="btn-reset" class="btn btn-icon btn-ghost">
+            <i data-lucide="rotate-ccw"></i>
+          </button>
+          
+          <div class="scrubber-container">
+            <span class="time-label">t=0 (Noise $z_0$)</span>
+            <input type="range" id="scrubber" min="0" max="1000" value="0" class="time-scrubber">
+            <span class="time-label">t=1 (Data $x_1$)</span>
+          </div>
+
+          <div class="speed-control">
+            <label>속도:</label>
+            <select id="speed-select" class="form-control-sm">
+              <option value="0.1">0.1x (초미세)</option>
+              <option value="0.25">0.25x (아주 느리게)</option>
+              <option value="0.5">0.5x (느리게)</option>
+              <option value="1.0" selected>1.0x (보통)</option>
+              <option value="2.0">2.0x (빠르게)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Right Panel: Vector Field & Target Image Readout -->
+      <aside class="panel card">
+        <div class="panel-header">
+          <h3><i data-lucide="target"></i> 3. 속도장 벡터($\vec{v}_t$) 계측기</h3>
+        </div>
+
+        <!-- Velocity Vector Metric Box -->
+        <div class="distance-metric-box card-inner">
+          <div class="metric-row">
+            <span>속도장 벡터 $\vec{v}_t$:</span>
+            <strong id="metric-vector-val" class="font-mono">[v_x: +45.2, v_y: -12.4]</strong>
+          </div>
+          <div class="metric-row">
+            <span>속도장 벡터 상태:</span>
+            <strong id="metric-vector-status" class="highlight-target">고정 일직선 벡터 (OT Flow)</strong>
+          </div>
+          <div class="metric-row">
+            <span>최고 밀도 우세 품종:</span>
+            <strong id="metric-nearest-name" class="font-mono">치즈 냥이</strong>
+          </div>
+          <div class="metric-row">
+            <span>상대적 생성 확률 밀도 $p(x)$:</span>
+            <strong id="metric-confidence" class="font-mono">88.4%</strong>
+          </div>
+          <div class="confidence-bar-bg">
+            <div class="confidence-bar-fill" id="metric-conf-bar" style="width: 88.4%;"></div>
+          </div>
+        </div>
+
+        <div class="target-image-display card-inner">
+          <div class="target-title">
+            <span id="target-breed-badge" class="badge badge-target">최고 밀도: 치즈 냥이</span>
+          </div>
+          <div class="target-preview-box">
+            <canvas id="target-img-canvas" width="220" height="170"></canvas>
+          </div>
+          <p class="help-text text-center" id="predicted-x0-status">Flow Matching은 속도장 벡터 $\vec{v}$가 시작부터 끝까지 고정되며, Diffusion SDE는 속도장 벡터 $\vec{v}_t$가 매 step 실시간 회전합니다.</p>
+        </div>
+
+        <!-- Theory Box -->
+        <div class="comparison-info-box card-inner">
+          <h4><i data-lucide="compass"></i> 속도장 벡터 ($\vec{v}_t$) 원리 비교</h4>
+          <p class="help-text">
+            * <strong>Flow Matching ($\vec{v}$)</strong>: $\vec{v} = x_1 - z_0$ 방향 및 크기가 <strong>100% 고정</strong>.<br>
+            * <strong>Diffusion SDE ($\vec{v}_t$)</strong>: 매 step 노이즈가 주입되어 $\vec{v}_t$ 벡터 화살표가 <strong>실시간 요동치며 회전</strong>.
+          </p>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if (window.lucide) { lucide.createIcons(); }
+  </script>
+</body>
+</html>
