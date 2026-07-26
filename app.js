@@ -1,7 +1,8 @@
 /**
  * Generative Model Explainer Engine
- * Appends 2 Additional Neighbor Breed Names EXCLUDING the Primary Target Breed!
- * Under the cat image, renders: "★ 최종 생성: 삼색이 (+ 샴 냥이, + 러시안블루)"
+ * Dynamic Real-Time SDE Target & Neighbor Breed Switching!
+ * In Diffusion SDE mode (0.05 <= t < 0.85), dynamically switches the predicted target breed
+ * AND its 2 nearest neighbor breeds at every SDE step (e.g., "샴 (+ 삼색이, + 페르시안)" -> "비숑 (+ 말티즈, + 포메라니안)")!
  */
 
 function mulberry32(a) {
@@ -123,7 +124,7 @@ class ExplainerStudio {
       this.algorithm = 'diff';
       this.btnModeDiff.classList.add('active');
       this.btnModeFlow.classList.remove('active');
-      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 노이즈 속에서 각 고유 위치의 고양이 정답이 다이나믹하게 선명해집니다!";
+      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 노이즈 속에서 스텝별 예측 정답과 인근 2개 고양이가 다이나믹하게 전환됩니다!";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -314,7 +315,7 @@ class ExplainerStudio {
     });
   }
 
-  // Returns 2 Additional Neighbor Breed Names EXCLUDING primary breed -> e.g. " (+ 샴 냥이, + 러시안블루)"
+  // Returns 2 Additional Neighbor Breed Names EXCLUDING targetBreedData dynamically!
   getTwoNearbyNeighborNames(targetBreedData) {
     if (!targetBreedData || !this.fixedBreedMap) return '';
 
@@ -336,11 +337,16 @@ class ExplainerStudio {
     return '';
   }
 
+  // DYNAMIC SDE STEP TARGET PREDICTION:
+  // At t=0: 100% matches selected cell
+  // For 0.05 <= t < 0.85 in Diffusion SDE mode: Switches predicted target breed dynamically per step!
   getActivePredictedBreed(t) {
     if (this.algorithm === 'flow' || t >= 0.85) {
       return this.fixedFlowWinner;
+    } else if (t < 0.05) {
+      return this.noiseGrid[this.selectedCellIndex] || this.fixedFlowWinner;
     } else {
-      const stepQuantum = Math.floor(t * 12);
+      const stepQuantum = Math.floor(t * 14); // 14 dynamic SDE steps!
       const stepRng = mulberry32(this.seed * 777 + stepQuantum * 1337);
       const randomIdx = Math.floor(stepRng() * this.noiseGrid.length);
       return this.noiseGrid[randomIdx] || this.fixedFlowWinner;
@@ -351,7 +357,7 @@ class ExplainerStudio {
     if (this.algorithm === 'flow' || t < 0.05 || t >= 0.85) {
       return cell;
     } else {
-      const stepQuantum = Math.floor(t * 12 + idx * 3);
+      const stepQuantum = Math.floor(t * 14 + idx * 3);
       const stepRng = mulberry32(this.seed * 777 + stepQuantum * 1337 + idx * 999);
       const randIdx = Math.floor(stepRng() * this.noiseGrid.length);
       return this.noiseGrid[randIdx] || cell;
@@ -591,7 +597,7 @@ class ExplainerStudio {
     }
   }
 
-  // RENDER TARGET IMAGE CAPTION: Primary Breed + Appended 2 Neighbor Breeds (e.g. "★ 최종 생성: 삼색이 (+ 샴 냥이, + 러시안블루)")
+  // RENDER TARGET IMAGE PREVIEW CARD: DYNAMIC REAL-TIME SDE TARGET & NEIGHBOR BREED CAPTION!
   renderTargetImage() {
     const breedData = this.getActivePredictedBreed(this.currentTime) || this.noiseGrid[this.selectedCellIndex];
     if (!breedData) return;
@@ -615,7 +621,7 @@ class ExplainerStudio {
     const isEarly = this.currentTime < 0.85;
     const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '★ 최종 생성: ';
     
-    // Renders Primary Breed + Appended 2 Neighbor Breeds: "★ 최종 생성: 삼색이 (+ 샴 냥이, + 러시안블루)"
+    // DYNAMIC REAL-TIME STEP CAPTION: " [t=0.35 예측] 샴 냥이 (+ 삼색이, + 페르시안)"
     ctx.fillText(`${labelPrefix}${mainShortName}${neighborText}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
