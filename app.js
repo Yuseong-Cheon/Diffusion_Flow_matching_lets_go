@@ -1,8 +1,7 @@
 /**
  * Generative Model Explainer Engine
- * Multi-Breed Feature Blend Renderer!
- * Displays blended hybrid breed feature strings (e.g. "삼색이 + 샴 냥이 + 러시안블루 (특징 융합)") 
- * to intuitively show that generative AI interpolates features from multiple neighboring data clusters!
+ * Clean Canvas Badges: Reverts vector tags next to moving points back to 
+ * displaying a SINGLE breed name (e.g. "v_삼색이 [+42.1, -15.8]") for maximum canvas clarity!
  */
 
 function mulberry32(a) {
@@ -115,7 +114,7 @@ class ExplainerStudio {
       this.algorithm = 'flow';
       this.btnModeFlow.classList.add('active');
       this.btnModeDiff.classList.remove('active');
-      this.predictedX0Status.textContent = "플로우 매칭 모드: t=0 노이즈에서 시작해 고유 위치의 고양이 특징이 일직선으로 융합되어 나타납니다.";
+      this.predictedX0Status.textContent = "플로우 매칭 모드: t=0 노이즈에서 시작해 고유 위치의 고양이 특징이 일직선으로 뚜렷해집니다.";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -124,7 +123,7 @@ class ExplainerStudio {
       this.algorithm = 'diff';
       this.btnModeDiff.classList.add('active');
       this.btnModeFlow.classList.remove('active');
-      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 노이즈 속에서 여러 고양이 특징 키워드가 다이나믹하게 혼합 융합됩니다!";
+      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 노이즈 속에서 각 고유 위치의 고양이 정답이 다이나믹하게 선명해집니다!";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -315,31 +314,6 @@ class ExplainerStudio {
     });
   }
 
-  // Calculate Multi-Breed Hybrid Feature Blend String (e.g. "삼색이 + 샴 냥이 + 러시안블루")
-  getBlendedHybridFeatureName(targetBreedData) {
-    if (!targetBreedData || !this.fixedBreedMap) return targetBreedData ? targetBreedData.shortName : '';
-
-    const targetPos = targetBreedData.x1;
-    // Calculate distances to all neighboring breeds on the manifold
-    const sortedNeighbors = [...this.fixedBreedMap]
-      .map(b => {
-        const dx = b.x1.x - targetPos.x;
-        const dy = b.x1.y - targetPos.y;
-        return { shortName: b.shortName, dist: Math.sqrt(dx * dx + dy * dy) };
-      })
-      .sort((a, b) => a.dist - b.dist);
-
-    const top1 = sortedNeighbors[0] ? sortedNeighbors[0].shortName : targetBreedData.shortName;
-    const top2 = sortedNeighbors[1] ? sortedNeighbors[1].shortName : null;
-    const top3 = sortedNeighbors[2] ? sortedNeighbors[2].shortName : null;
-
-    let hybridName = top1;
-    if (top2 && top2 !== top1) hybridName += ` + ${top2}`;
-    if (top3 && top3 !== top1 && top3 !== top2) hybridName += ` + ${top3}`;
-
-    return hybridName;
-  }
-
   getActivePredictedBreed(t) {
     if (this.algorithm === 'flow' || t >= 0.85) {
       return this.fixedFlowWinner;
@@ -422,11 +396,9 @@ class ExplainerStudio {
 
     const confidence = Math.max(0, Math.min(100, Math.floor(100 - (minDist / 1.8))));
 
-    const blendedHybrid = this.getBlendedHybridFeatureName(activeBreed);
-
     this.selectedCellName.textContent = `${cell.name} 임베딩 (Seed #${this.seed})`;
     this.selectedCellVal.textContent = `초기 노이즈 z0 [${cell.r}, ${cell.g}, ${cell.b}]`;
-    this.selectedCellTarget.textContent = `${blendedHybrid}`;
+    this.selectedCellTarget.textContent = `${cell.breedName}`;
 
     const isDiff = this.algorithm === 'diff';
     const isEarly = this.currentTime < 0.85;
@@ -434,10 +406,10 @@ class ExplainerStudio {
 
     if (this.metricVectorVal) this.metricVectorVal.textContent = `[v_x: ${velVector.vx > 0 ? '+' : ''}${velVector.vx.toFixed(1)}, v_y: ${velVector.vy > 0 ? '+' : ''}${velVector.vy.toFixed(1)}]`;
     if (this.metricVectorStatus) this.metricVectorStatus.textContent = velVector.isConstant ? `${cell.name} 고정 속도장 (Constant OT Flow)` : `${cell.name} 실시간 회전 속도장 (Dynamic SDE Drift)`;
-    if (this.metricNearestName) this.metricNearestName.textContent = `${labelPrefix}${blendedHybrid}`;
+    if (this.metricNearestName) this.metricNearestName.textContent = `${labelPrefix}${activeBreed.shortName || activeBreed.breedName.split(' ')[0]}`;
     if (this.metricConfidence) this.metricConfidence.textContent = `${confidence}%`;
     if (this.metricConfBar) this.metricConfBar.style.width = `${confidence}%`;
-    if (this.targetBreedBadge) this.targetBreedBadge.textContent = `${labelPrefix}특징 융합: ${blendedHybrid}`;
+    if (this.targetBreedBadge) this.targetBreedBadge.textContent = `${labelPrefix}최고 밀도: ${activeBreed.shortName || activeBreed.breedName.split(' ')[0]}`;
   }
 
   renderEvolutionCanvases() {
@@ -608,14 +580,13 @@ class ExplainerStudio {
     this.drawDenoisedCatOnContext(ctx, w, h, breedData, this.currentTime);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '700 11px Outfit';
+    ctx.font = '700 12px Outfit';
     ctx.textAlign = 'center';
 
-    const blendedHybrid = this.getBlendedHybridFeatureName(breedData);
     const isDiff = this.algorithm === 'diff';
     const isEarly = this.currentTime < 0.85;
-    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '★ 융합 특징: ';
-    ctx.fillText(`${labelPrefix}${blendedHybrid}`, w / 2, h - 10);
+    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 디노이징 예측] ` : '★ 생성 완료: ';
+    ctx.fillText(`${labelPrefix}${breedData.shortName || breedData.breedName}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
   }
@@ -666,6 +637,7 @@ class ExplainerStudio {
     ctx.restore();
   }
 
+  // RENDER CANVAS TAGS WITH CLEAN SINGLE BREED NAMES!
   renderManifold() {
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -763,7 +735,7 @@ class ExplainerStudio {
     ctx.fillText(`초기 노이즈 z0 (Seed #${this.seed})`, w * 0.06, h * 0.33);
     ctx.restore();
 
-    // 5. RENDER TRAJECTORIES & INDIVIDUAL TARGET GRADIENT / VELOCITY VECTOR ARROWS (\vec{v}_{t, i})
+    // 5. RENDER TRAJECTORIES & CLEAN SINGLE BREED NAME VECTOR BADGES (e.g. v_삼색이 [+42.1, -15.8])
     this.noiseGrid.forEach((cell, idx) => {
       const isSelectedCell = idx === this.selectedCellIndex;
       const pos = this.computeTrajectoryPos(cell.z0, cell.x1, this.currentTime, idx);
@@ -815,7 +787,7 @@ class ExplainerStudio {
       ctx.fill();
       ctx.restore();
 
-      // RENDER MULTI-BREED FEATURE BLEND BADGES NEXT TO MOVING POINTS!
+      // CLEAN SINGLE BREED NAME VECTOR BADGES NEXT TO MOVING POINTS!
       if (this.currentTime < 0.98) {
         const arrowColor = isSelectedCell ? (isFlow ? '#00f0ff' : '#facc15') : (isFlow ? 'rgba(56, 189, 248, 0.75)' : 'rgba(244, 63, 94, 0.75)');
         const arrowLen = isSelectedCell ? 48 : 34;
@@ -828,8 +800,7 @@ class ExplainerStudio {
         this.drawArrowHead(ctx, pos.x, pos.y, endX, endY, arrowColor, strokeW);
 
         const realtimeTarget = this.getRealtimeParticleTarget(cell, this.currentTime, idx);
-        const blendedHybridName = this.getBlendedHybridFeatureName(realtimeTarget);
-        const displayName = isFlow ? this.getBlendedHybridFeatureName(cell) : blendedHybridName;
+        const singleBreedName = isFlow ? cell.name : (realtimeTarget.shortName || realtimeTarget.name.split(' ')[0]);
 
         ctx.save();
         ctx.fillStyle = arrowColor;
@@ -838,7 +809,7 @@ class ExplainerStudio {
         ctx.shadowColor = arrowColor;
         
         const isDiffEarly = (!isFlow) && (this.currentTime >= 0.05) && (this.currentTime < 0.85);
-        const vecNumText = `v_${displayName}${isDiffEarly ? '(융합예측)' : ''} [${velVec.vx > 0 ? '+' : ''}${velVec.vx.toFixed(1)}, ${velVec.vy > 0 ? '+' : ''}${velVectorStr(velVec.vy)}]`;
+        const vecNumText = `v_${singleBreedName}${isDiffEarly ? '(예측)' : ''} [${velVec.vx > 0 ? '+' : ''}${velVec.vx.toFixed(1)}, ${velVec.vy > 0 ? '+' : ''}${velVectorStr(velVec.vy)}]`;
         
         ctx.fillText(vecNumText, endX + 4, endY + (idx % 2 === 0 ? -6 : 10));
         ctx.restore();
