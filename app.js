@@ -1,7 +1,7 @@
 /**
  * Generative Model Explainer Engine
- * Pure Korean Clean Captions: Removes all English text and removes '인근융합' label.
- * Under the cat image, renders cleanly: "★ 최종 생성: 삼색이 + 샴 냥이 + 러시안블루"
+ * Appends 2 Additional Neighbor Breed Names EXCLUDING the Primary Target Breed!
+ * Under the cat image, renders: "★ 최종 생성: 삼색이 (+ 샴 냥이, + 러시안블루)"
  */
 
 function mulberry32(a) {
@@ -161,7 +161,6 @@ class ExplainerStudio {
     const rng = mulberry32(this.seed * 9999 + (this.prompt === 'cat' ? 100 : this.prompt === 'dog' ? 200 : 300));
     this.noiseGrid = [];
 
-    // Pure Korean Names ONLY (No English text in parentheses!)
     const richPools = {
       cat: [
         { id: 0, name: '페르시안 고양이', shortName: '페르시안', color: '#e2e8f0', pattern: 'fluffy' },
@@ -315,13 +314,13 @@ class ExplainerStudio {
     });
   }
 
-  // Pure Clean Blend String (NO "인근융합" label, NO English!) -> e.g. " + 샴 냥이 + 러시안블루"
+  // Returns 2 Additional Neighbor Breed Names EXCLUDING primary breed -> e.g. " (+ 샴 냥이, + 러시안블루)"
   getTwoNearbyNeighborNames(targetBreedData) {
     if (!targetBreedData || !this.fixedBreedMap) return '';
 
     const targetPos = targetBreedData.x1;
     const sortedNeighbors = [...this.fixedBreedMap]
-      .filter(b => b.shortName !== targetBreedData.shortName)
+      .filter(b => b.shortName !== targetBreedData.shortName && b.name !== targetBreedData.name)
       .map(b => {
         const dx = b.x1.x - targetPos.x;
         const dy = b.x1.y - targetPos.y;
@@ -332,8 +331,8 @@ class ExplainerStudio {
     const neighbor1 = sortedNeighbors[0] ? sortedNeighbors[0].shortName : '';
     const neighbor2 = sortedNeighbors[1] ? sortedNeighbors[1].shortName : '';
 
-    if (neighbor1 && neighbor2) return ` + ${neighbor1} + ${neighbor2}`;
-    if (neighbor1) return ` + ${neighbor1}`;
+    if (neighbor1 && neighbor2) return ` (+ ${neighbor1}, + ${neighbor2})`;
+    if (neighbor1) return ` (+ ${neighbor1})`;
     return '';
   }
 
@@ -592,7 +591,7 @@ class ExplainerStudio {
     }
   }
 
-  // RENDER TARGET IMAGE PREVIEW CARD CAPTION: PURE KOREAN ONLY (e.g. "★ 최종 생성: 삼색이 + 샴 냥이 + 러시안블루")
+  // RENDER TARGET IMAGE CAPTION: Primary Breed + Appended 2 Neighbor Breeds (e.g. "★ 최종 생성: 삼색이 (+ 샴 냥이, + 러시안블루)")
   renderTargetImage() {
     const breedData = this.getActivePredictedBreed(this.currentTime) || this.noiseGrid[this.selectedCellIndex];
     if (!breedData) return;
@@ -616,7 +615,7 @@ class ExplainerStudio {
     const isEarly = this.currentTime < 0.85;
     const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '★ 최종 생성: ';
     
-    // Pure Clean Korean: "★ 최종 생성: 삼색이 + 샴 냥이 + 러시안블루"
+    // Renders Primary Breed + Appended 2 Neighbor Breeds: "★ 최종 생성: 삼색이 (+ 샴 냥이, + 러시안블루)"
     ctx.fillText(`${labelPrefix}${mainShortName}${neighborText}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
