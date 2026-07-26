@@ -1,8 +1,8 @@
 /**
  * Generative Model Explainer Engine
- * Dynamic Real-Time SDE Target & Neighbor Breed Switching!
- * In Diffusion SDE mode (0.05 <= t < 0.85), dynamically switches the predicted target breed
- * AND its 2 nearest neighbor breeds at every SDE step (e.g., "샴 (+ 삼색이, + 페르시안)" -> "비숑 (+ 말티즈, + 포메라니안)")!
+ * Dynamic SDE Multi-Breed Manifold Sampling!
+ * In Diffusion SDE mode, SDE stochastic drift dynamically samples fresh diverse target breeds
+ * from the full 20-species pool across diverse manifold coordinates as time advances!
  */
 
 function mulberry32(a) {
@@ -124,7 +124,7 @@ class ExplainerStudio {
       this.algorithm = 'diff';
       this.btnModeDiff.classList.add('active');
       this.btnModeFlow.classList.remove('active');
-      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 노이즈 속에서 스텝별 예측 정답과 인근 2개 고양이가 다이나믹하게 전환됩니다!";
+      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 확률적 뜀박질에 따라 20개 모든 고양이 품종이 다양한 위치에서 동적으로 탐색됩니다!";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -242,6 +242,7 @@ class ExplainerStudio {
     };
     const classCenter = promptCenters[this.prompt];
 
+    // EVERY SINGLE BREED IN THE 20-SPECIES POOL HAS ITS OWN UNIQUE DEDICATED (x, y) POSITION ON THE MANIFOLD!
     const allBreedFixedClusters = fullPool.map((breed) => {
       const angle = (breed.id / 20) * Math.PI * 2;
       const radiusDist = classCenter.radius * (0.55 + ((breed.id % 3) * 0.15));
@@ -284,6 +285,7 @@ class ExplainerStudio {
 
     this.fixedBreedMap = sampledPool;
     this.allBreedFixedClusters = allBreedFixedClusters;
+    this.fullPool = fullPool;
     this.fixedFlowWinner = this.noiseGrid[winnerIndex];
 
     this.renderNoiseGridDOM();
@@ -315,12 +317,11 @@ class ExplainerStudio {
     });
   }
 
-  // Returns 2 Additional Neighbor Breed Names EXCLUDING targetBreedData dynamically!
   getTwoNearbyNeighborNames(targetBreedData) {
-    if (!targetBreedData || !this.fixedBreedMap) return '';
+    if (!targetBreedData || !this.allBreedFixedClusters) return '';
 
     const targetPos = targetBreedData.x1;
-    const sortedNeighbors = [...this.fixedBreedMap]
+    const sortedNeighbors = [...this.allBreedFixedClusters]
       .filter(b => b.shortName !== targetBreedData.shortName && b.name !== targetBreedData.name)
       .map(b => {
         const dx = b.x1.x - targetPos.x;
@@ -338,18 +339,18 @@ class ExplainerStudio {
   }
 
   // DYNAMIC SDE STEP TARGET PREDICTION:
-  // At t=0: 100% matches selected cell
-  // For 0.05 <= t < 0.85 in Diffusion SDE mode: Switches predicted target breed dynamically per step!
+  // In Diffusion SDE mode, SDE Brownian drift wanders across ALL 20 BREEDS in the pool at different step phases!
   getActivePredictedBreed(t) {
     if (this.algorithm === 'flow' || t >= 0.85) {
       return this.fixedFlowWinner;
     } else if (t < 0.05) {
       return this.noiseGrid[this.selectedCellIndex] || this.fixedFlowWinner;
     } else {
-      const stepQuantum = Math.floor(t * 14); // 14 dynamic SDE steps!
+      // In Diffusion SDE mode, SDE drift wanders across the FULL 20-BREED POOL at different SDE step phases!
+      const stepQuantum = Math.floor(t * 14);
       const stepRng = mulberry32(this.seed * 777 + stepQuantum * 1337);
-      const randomIdx = Math.floor(stepRng() * this.noiseGrid.length);
-      return this.noiseGrid[randomIdx] || this.fixedFlowWinner;
+      const randomFullIdx = Math.floor(stepRng() * this.allBreedFixedClusters.length);
+      return this.allBreedFixedClusters[randomFullIdx] || this.fixedFlowWinner;
     }
   }
 
@@ -359,8 +360,8 @@ class ExplainerStudio {
     } else {
       const stepQuantum = Math.floor(t * 14 + idx * 3);
       const stepRng = mulberry32(this.seed * 777 + stepQuantum * 1337 + idx * 999);
-      const randIdx = Math.floor(stepRng() * this.noiseGrid.length);
-      return this.noiseGrid[randIdx] || cell;
+      const randFullIdx = Math.floor(stepRng() * this.allBreedFixedClusters.length);
+      return this.allBreedFixedClusters[randFullIdx] || cell;
     }
   }
 
@@ -597,7 +598,6 @@ class ExplainerStudio {
     }
   }
 
-  // RENDER TARGET IMAGE PREVIEW CARD: DYNAMIC REAL-TIME SDE TARGET & NEIGHBOR BREED CAPTION!
   renderTargetImage() {
     const breedData = this.getActivePredictedBreed(this.currentTime) || this.noiseGrid[this.selectedCellIndex];
     if (!breedData) return;
@@ -621,7 +621,6 @@ class ExplainerStudio {
     const isEarly = this.currentTime < 0.85;
     const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '★ 최종 생성: ';
     
-    // DYNAMIC REAL-TIME STEP CAPTION: " [t=0.35 예측] 샴 냥이 (+ 삼색이, + 페르시안)"
     ctx.fillText(`${labelPrefix}${mainShortName}${neighborText}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
@@ -673,6 +672,8 @@ class ExplainerStudio {
     ctx.restore();
   }
 
+  // RENDER DYNAMIC BREED CLUSTERS ON 2D MANIFOLD!
+  // In Diffusion SDE mode, renders active target breed clusters dynamically across ALL 20 SPECIES LOCATIONS!
   renderManifold() {
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -727,10 +728,13 @@ class ExplainerStudio {
     const centerPt = this.getCombinedCenterPoint(this.currentTime);
     const activeBreed = this.getActivePredictedBreed(this.currentTime);
 
-    // 3. Breed Sub-Clusters
-    if (this.fixedBreedMap) {
-      this.fixedBreedMap.forEach((breedCluster) => {
-        const isWinner = activeBreed && (activeBreed.breedName === breedCluster.name);
+    // 3. Breed Sub-Clusters on Manifold
+    // In Diffusion SDE mode, renders active target breed clusters dynamically across ALL 20 SPECIES LOCATIONS!
+    const activeClustersToDraw = (this.algorithm === 'diff' && this.currentTime < 0.85) ? this.allBreedFixedClusters : this.fixedBreedMap;
+
+    if (activeClustersToDraw) {
+      activeClustersToDraw.forEach((breedCluster) => {
+        const isWinner = activeBreed && (activeBreed.name === breedCluster.name || activeBreed.shortName === breedCluster.shortName);
         
         ctx.save();
         ctx.strokeStyle = isWinner ? '#ec4899' : `${breedCluster.color}80`;
@@ -738,7 +742,7 @@ class ExplainerStudio {
         ctx.lineWidth = isWinner ? 3.0 : 1.0;
 
         ctx.beginPath();
-        ctx.arc(breedCluster.x1.x, breedCluster.x1.y, isWinner ? 18 : 14, 0, Math.PI * 2);
+        ctx.arc(breedCluster.x1.x, breedCluster.x1.y, isWinner ? 18 : 12, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
@@ -749,8 +753,8 @@ class ExplainerStudio {
         }
 
         ctx.fillStyle = isWinner ? '#ffffff' : '#9ca3af';
-        ctx.font = isWinner ? '700 11px Outfit' : '500 10px Outfit';
-        ctx.fillText(`${isWinner ? '🔥 ' : ''}${breedCluster.shortName}`, breedCluster.x1.x - 14, breedCluster.x1.y - 20);
+        ctx.font = isWinner ? '700 11px Outfit' : '500 9px Outfit';
+        ctx.fillText(`${isWinner ? '🔥 ' : ''}${breedCluster.shortName}`, breedCluster.x1.x - 14, breedCluster.x1.y - 18);
         ctx.restore();
       });
     }
