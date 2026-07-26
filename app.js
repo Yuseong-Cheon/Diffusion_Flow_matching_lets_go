@@ -1,7 +1,9 @@
 /**
  * Generative Model Explainer Engine
- * Clean Canvas Badges: Reverts vector tags next to moving points back to 
- * displaying a SINGLE breed name (e.g. "v_삼색이 [+42.1, -15.8]") for maximum canvas clarity!
+ * Clean Canvas + Target Preview Blended Neighbors!
+ * Canvas points keep simple single breed names. 
+ * ONLY UNDER the right-side Target Image Preview, shows which 2 nearby cat breeds were added/blended 
+ * (e.g. "★ 최종 생성: 삼색이 (인근 융합: + 샴 냥이, + 러시안블루)")!
  */
 
 function mulberry32(a) {
@@ -114,7 +116,7 @@ class ExplainerStudio {
       this.algorithm = 'flow';
       this.btnModeFlow.classList.add('active');
       this.btnModeDiff.classList.remove('active');
-      this.predictedX0Status.textContent = "플로우 매칭 모드: t=0 노이즈에서 시작해 고유 위치의 고양이 특징이 일직선으로 뚜렷해집니다.";
+      this.predictedX0Status.textContent = "플로우 매칭 모드: t=0 노이즈에서 시작해 고유 위치의 고양이 특징이 일직선으로 선명해집니다.";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -314,6 +316,28 @@ class ExplainerStudio {
     });
   }
 
+  // Get 2 Nearby Neighbor Breed Names for Preview Card Caption ONLY!
+  getTwoNearbyNeighborNames(targetBreedData) {
+    if (!targetBreedData || !this.fixedBreedMap) return '';
+
+    const targetPos = targetBreedData.x1;
+    const sortedNeighbors = [...this.fixedBreedMap]
+      .filter(b => b.shortName !== targetBreedData.shortName)
+      .map(b => {
+        const dx = b.x1.x - targetPos.x;
+        const dy = b.x1.y - targetPos.y;
+        return { shortName: b.shortName, dist: Math.sqrt(dx * dx + dy * dy) };
+      })
+      .sort((a, b) => a.dist - b.dist);
+
+    const neighbor1 = sortedNeighbors[0] ? sortedNeighbors[0].shortName : '';
+    const neighbor2 = sortedNeighbors[1] ? sortedNeighbors[1].shortName : '';
+
+    if (neighbor1 && neighbor2) return ` (인근 융합: + ${neighbor1}, + ${neighbor2})`;
+    if (neighbor1) return ` (인근 융합: + ${neighbor1})`;
+    return '';
+  }
+
   getActivePredictedBreed(t) {
     if (this.algorithm === 'flow' || t >= 0.85) {
       return this.fixedFlowWinner;
@@ -395,6 +419,8 @@ class ExplainerStudio {
     this.winningBreed = activeBreed;
 
     const confidence = Math.max(0, Math.min(100, Math.floor(100 - (minDist / 1.8))));
+    const mainShortName = activeBreed.shortName || activeBreed.breedName.split(' ')[0];
+    const neighborText = this.getTwoNearbyNeighborNames(activeBreed);
 
     this.selectedCellName.textContent = `${cell.name} 임베딩 (Seed #${this.seed})`;
     this.selectedCellVal.textContent = `초기 노이즈 z0 [${cell.r}, ${cell.g}, ${cell.b}]`;
@@ -406,10 +432,10 @@ class ExplainerStudio {
 
     if (this.metricVectorVal) this.metricVectorVal.textContent = `[v_x: ${velVector.vx > 0 ? '+' : ''}${velVector.vx.toFixed(1)}, v_y: ${velVector.vy > 0 ? '+' : ''}${velVector.vy.toFixed(1)}]`;
     if (this.metricVectorStatus) this.metricVectorStatus.textContent = velVector.isConstant ? `${cell.name} 고정 속도장 (Constant OT Flow)` : `${cell.name} 실시간 회전 속도장 (Dynamic SDE Drift)`;
-    if (this.metricNearestName) this.metricNearestName.textContent = `${labelPrefix}${activeBreed.shortName || activeBreed.breedName.split(' ')[0]}`;
+    if (this.metricNearestName) this.metricNearestName.textContent = `${labelPrefix}${mainShortName}`;
     if (this.metricConfidence) this.metricConfidence.textContent = `${confidence}%`;
     if (this.metricConfBar) this.metricConfBar.style.width = `${confidence}%`;
-    if (this.targetBreedBadge) this.targetBreedBadge.textContent = `${labelPrefix}최고 밀도: ${activeBreed.shortName || activeBreed.breedName.split(' ')[0]}`;
+    if (this.targetBreedBadge) this.targetBreedBadge.textContent = `${labelPrefix}최고 밀도: ${mainShortName}${neighborText}`;
   }
 
   renderEvolutionCanvases() {
@@ -567,6 +593,7 @@ class ExplainerStudio {
     }
   }
 
+  // RENDER TARGET IMAGE PREVIEW CARD WITH BLENDED NEIGHBOR NAMES ONLY UNDER THE CAT IMAGE!
   renderTargetImage() {
     const breedData = this.getActivePredictedBreed(this.currentTime) || this.noiseGrid[this.selectedCellIndex];
     if (!breedData) return;
@@ -580,13 +607,18 @@ class ExplainerStudio {
     this.drawDenoisedCatOnContext(ctx, w, h, breedData, this.currentTime);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '700 12px Outfit';
+    ctx.font = '700 11px Outfit';
     ctx.textAlign = 'center';
+
+    const mainShortName = breedData.shortName || breedData.breedName;
+    const neighborText = this.getTwoNearbyNeighborNames(breedData);
 
     const isDiff = this.algorithm === 'diff';
     const isEarly = this.currentTime < 0.85;
-    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 디노이징 예측] ` : '★ 생성 완료: ';
-    ctx.fillText(`${labelPrefix}${breedData.shortName || breedData.breedName}`, w / 2, h - 10);
+    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 디노이징 예측] ` : '★ 최종 생성: ';
+    
+    // Shows main breed + 2 nearby merged neighbors ONLY UNDER THE CAT IMAGE!
+    ctx.fillText(`${labelPrefix}${mainShortName}${neighborText}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
   }
@@ -637,7 +669,6 @@ class ExplainerStudio {
     ctx.restore();
   }
 
-  // RENDER CANVAS TAGS WITH CLEAN SINGLE BREED NAMES!
   renderManifold() {
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -787,7 +818,6 @@ class ExplainerStudio {
       ctx.fill();
       ctx.restore();
 
-      // CLEAN SINGLE BREED NAME VECTOR BADGES NEXT TO MOVING POINTS!
       if (this.currentTime < 0.98) {
         const arrowColor = isSelectedCell ? (isFlow ? '#00f0ff' : '#facc15') : (isFlow ? 'rgba(56, 189, 248, 0.75)' : 'rgba(244, 63, 94, 0.75)');
         const arrowLen = isSelectedCell ? 48 : 34;
