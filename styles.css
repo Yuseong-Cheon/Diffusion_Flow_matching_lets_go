@@ -179,7 +179,8 @@ body {
   background: rgba(56, 189, 248, 0.2);
   color: var(--flow-color);
   border: 1px solid rgba(56, 189, 248, 0.4);
-  font-size: 0.85rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 /* Seed Control Box */
@@ -257,8 +258,9 @@ body {
 }
 
 .cell-val {
-  font-size: 0.65rem;
+  font-size: 0.58rem;
   font-family: var(--font-mono);
+  white-space: nowrap;
   color: rgba(255,255,255,0.85);
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);
 }
@@ -295,6 +297,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  white-space: nowrap;
   font-size: 0.78rem;
   color: var(--text-muted);
 }
