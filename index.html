@@ -207,6 +207,15 @@
             <span>2.5σ 최종 판정:</span>
             <strong id="mode-boundary-status" class="font-mono">진행 중</strong>
           </div>
+          <div class="target-image-display">
+            <div class="target-title">
+              <span id="target-breed-badge" class="badge badge-target">조건부 목적지</span>
+            </div>
+            <div class="target-preview-box">
+              <canvas id="target-img-canvas" width="220" height="170"></canvas>
+            </div>
+            <p class="help-text text-center" id="predicted-x0-status">Flow 모드는 선택한 (z₀, x₁) 쌍의 조건부 target을 직선으로 보여줍니다.</p>
+          </div>
           <div class="metric-row" id="metric-confidence-row">
             <span id="metric-confidence-label">조건부 pairing:</span>
             <strong id="metric-confidence" class="font-mono">100%</strong>
@@ -221,14 +230,9 @@
           </div>
         </div>
 
-        <div class="target-image-display card-inner">
-          <div class="target-title">
-            <span id="target-breed-badge" class="badge badge-target">조건부 목적지</span>
-          </div>
-          <div class="target-preview-box">
-            <canvas id="target-img-canvas" width="220" height="170"></canvas>
-          </div>
-          <p class="help-text text-center" id="predicted-x0-status">Flow 모드는 선택한 (z₀, x₁) 쌍의 조건부 target을 직선으로 보여줍니다.</p>
+        <div id="batch-mean-preview" class="batch-mean-preview card-inner" hidden>
+          <span id="batch-mean-badge" class="badge badge-target">τ=0.00 · batch mean 가장 큰 영향</span>
+          <canvas id="batch-mean-canvas" width="220" height="170"></canvas>
         </div>
 
         <!-- Theory Box -->

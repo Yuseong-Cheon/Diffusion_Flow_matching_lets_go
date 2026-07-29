@@ -352,6 +352,24 @@ body {
 
 .mode-responsibility-list[hidden] { display: none; }
 
+.batch-mean-preview {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding-top: 7px;
+  border-top: 1px solid var(--bg-card-border);
+}
+
+.batch-mean-preview[hidden] { display: none; }
+
+#batch-mean-canvas {
+  width: 180px;
+  height: auto;
+  background: #040711;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+}
+
 .mode-list-title {
   font-size: 0.7rem;
   color: #cbd5e1;
@@ -553,6 +571,8 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--bg-card-border);
 }
 
 .target-preview-box {

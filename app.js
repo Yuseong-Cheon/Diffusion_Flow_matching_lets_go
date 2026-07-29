@@ -46,6 +46,9 @@ class ExplainerStudio {
     this.metricVectorStatus = document.getElementById('metric-vector-status');
     this.metricVectorLabel = document.getElementById('metric-vector-label');
     this.metricNearestName = document.getElementById('metric-nearest-name');
+    this.batchMeanPreview = document.getElementById('batch-mean-preview');
+    this.batchMeanCanvas = document.getElementById('batch-mean-canvas');
+    this.batchMeanBadge = document.getElementById('batch-mean-badge');
     this.modeBoundaryRow = document.getElementById('mode-boundary-row');
     this.modeBoundaryStatus = document.getElementById('mode-boundary-status');
     this.metricConfidence = document.getElementById('metric-confidence');
@@ -871,7 +874,28 @@ class ExplainerStudio {
       : `${isDiff ? `τ=${this.currentTime.toFixed(2)} 가장 큰 영향: ` : '조건부 목적지: '}${mainShortName}`;
     ctx.fillText(label, w / 2, h - 10);
 
+    this.renderBatchMeanImage();
     this.renderEvolutionCanvases();
+  }
+
+  renderBatchMeanImage() {
+    const isDiff = this.algorithm === 'diff';
+    this.batchMeanPreview.hidden = !isDiff;
+    if (!isDiff) return;
+
+    const pos = this.getCombinedCenterPoint(this.currentTime);
+    const stats = this.getDiffusionStats(pos, this.currentTime);
+    const status = this.currentTime >= 0.999 ? this.getFinalModeStatus(pos) : null;
+    const breed = status?.breed || stats.breed;
+    const ctx = this.batchMeanCanvas.getContext('2d');
+    const { width, height } = this.batchMeanCanvas;
+
+    ctx.clearRect(0, 0, width, height);
+    if (status && status.type !== 'single') this.drawUnresolvedMode(ctx, width, height, stats, status);
+    else this.drawDenoisedCatOnContext(ctx, width, height, breed, this.currentTime);
+    this.batchMeanBadge.textContent = status
+      ? `batch mean 최종 판정: ${status.label}`
+      : `τ=${this.currentTime.toFixed(2)} · batch mean 가장 큰 영향: ${breed.shortName || breed.name}`;
   }
 
   loop(timestamp) {
