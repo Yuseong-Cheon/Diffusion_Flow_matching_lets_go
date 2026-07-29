@@ -46,9 +46,19 @@ class ExplainerStudio {
     this.metricVectorStatus = document.getElementById('metric-vector-status');
     this.metricVectorLabel = document.getElementById('metric-vector-label');
     this.metricNearestName = document.getElementById('metric-nearest-name');
+    this.modeBoundaryRow = document.getElementById('mode-boundary-row');
+    this.modeBoundaryStatus = document.getElementById('mode-boundary-status');
     this.metricConfidence = document.getElementById('metric-confidence');
     this.metricConfidenceLabel = document.getElementById('metric-confidence-label');
     this.metricConfBar = document.getElementById('metric-conf-bar');
+    this.metricConfidenceRow = document.getElementById('metric-confidence-row');
+    this.metricConfidenceBar = document.getElementById('metric-confidence-bar');
+    this.modeResponsibilityList = document.getElementById('mode-responsibility-list');
+    this.modeResponsibilityBars = document.getElementById('mode-responsibility-bars');
+    this.diffusionStepBreakdown = document.getElementById('diffusion-step-breakdown');
+    this.metricDriftStep = document.getElementById('metric-drift-step');
+    this.metricNoiseStep = document.getElementById('metric-noise-step');
+    this.metricTotalStep = document.getElementById('metric-total-step');
 
     this.btnModeFlow = document.getElementById('btn-mode-flow');
     this.btnModeDiff = document.getElementById('btn-mode-diff');
@@ -57,6 +67,8 @@ class ExplainerStudio {
     this.btnReset = document.getElementById('btn-reset');
     this.scrubber = document.getElementById('scrubber');
     this.diffusionStepSelect = document.getElementById('diffusion-step-select');
+    this.btnResampleDiffusion = document.getElementById('btn-resample-diffusion');
+    this.diffusionRunLabel = document.getElementById('diffusion-run-label');
     this.speedSelect = document.getElementById('speed-select');
     this.btnExportVideo = document.getElementById('btn-export-video');
 
@@ -68,6 +80,9 @@ class ExplainerStudio {
     this.isPlaying = true;
     this.speed = parseFloat(this.speedSelect.value) || 1.0;
     this.selectedCellIndex = 0;
+    this.diffusionNoiseRun = 0;
+    this.dataModeSigma = 0.18;
+    this.modeBoundarySigma = 2.5;
 
     // Data Structures
     this.noiseGrid = [];
@@ -103,12 +118,16 @@ class ExplainerStudio {
 
     this.promptSelect.addEventListener('change', (e) => {
       this.prompt = e.target.value;
+      this.diffusionNoiseRun = 0;
+      this.diffusionRunLabel.textContent = 'SDE noise #1';
       this.generateSeedData();
     });
 
     this.seedSlider.addEventListener('input', (e) => {
       this.seed = parseInt(e.target.value);
       this.seedBadge.textContent = `시드 #${this.seed}`;
+      this.diffusionNoiseRun = 0;
+      this.diffusionRunLabel.textContent = 'SDE noise #1';
       this.generateSeedData();
     });
 
@@ -116,6 +135,8 @@ class ExplainerStudio {
       this.seed = Math.floor(Math.random() * 999) + 1;
       this.seedSlider.value = this.seed;
       this.seedBadge.textContent = `시드 #${this.seed}`;
+      this.diffusionNoiseRun = 0;
+      this.diffusionRunLabel.textContent = 'SDE noise #1';
       this.generateSeedData();
     });
 
@@ -148,6 +169,17 @@ class ExplainerStudio {
     });
 
     this.diffusionStepSelect.addEventListener('change', () => {
+      this.buildDiffusionPaths();
+      this.selfCheck();
+      this.updateSelectedCellDetail();
+      this.renderTargetImage();
+    });
+
+    this.btnResampleDiffusion.addEventListener('click', () => {
+      this.diffusionNoiseRun++;
+      this.diffusionRunLabel.textContent = `SDE noise #${this.diffusionNoiseRun + 1}`;
+      this.currentTime = 0;
+      this.scrubber.value = 0;
       this.buildDiffusionPaths();
       this.selfCheck();
       this.updateSelectedCellDetail();
@@ -255,12 +287,19 @@ class ExplainerStudio {
       [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
     }
     const sampledPool = shuffledPool.slice(0, 9);
+    const priorBounds = this.getPriorBounds();
+    const center = { x: priorBounds.x + priorBounds.width / 2, y: priorBounds.y + priorBounds.height / 2 };
+    const noiseScale = Math.min(priorBounds.width, priorBounds.height) * 0.18;
+    const maxLatent = priorBounds.width * 0.42 / noiseScale;
 
     for (let i = 0; i < 9; i++) {
-      const [noiseR, noiseG] = normalPair(rng);
-      const [noiseB] = normalPair(rng);
-      const noiseX = (noiseR - noiseG) / Math.sqrt(2);
-      const noiseY = (noiseR + noiseG - 2 * noiseB) / Math.sqrt(6);
+      let noiseR, noiseG, noiseB, noiseX, noiseY;
+      do {
+        [noiseR, noiseG] = normalPair(rng);
+        [noiseB] = normalPair(rng);
+        noiseX = (noiseR - noiseG) / Math.sqrt(2);
+        noiseY = (noiseR + noiseG - 2 * noiseB) / Math.sqrt(6);
+      } while (Math.abs(noiseX) > maxLatent || Math.abs(noiseY) > maxLatent);
       const r = Math.max(0, Math.min(255, Math.round(128 + noiseR * 45)));
       const g = Math.max(0, Math.min(255, Math.round(128 + noiseG * 45)));
       const b = Math.max(0, Math.min(255, Math.round(128 + noiseB * 45)));
@@ -282,12 +321,8 @@ class ExplainerStudio {
       });
     }
 
-    const priorBounds = this.getPriorBounds();
-    const center = { x: priorBounds.x + priorBounds.width / 2, y: priorBounds.y + priorBounds.height / 2 };
-    const maxNoiseX = Math.max(1, ...this.noiseGrid.map(cell => Math.abs(cell.noiseValue.x)));
-    const maxNoiseY = Math.max(1, ...this.noiseGrid.map(cell => Math.abs(cell.noiseValue.y)));
-    this.noiseScaleX = priorBounds.width * 0.42 / maxNoiseX;
-    this.noiseScaleY = priorBounds.height * 0.42 / maxNoiseY;
+    this.noiseScaleX = noiseScale;
+    this.noiseScaleY = noiseScale;
     this.noiseGrid.forEach(cell => {
       cell.z0 = {
         x: center.x + cell.noiseValue.x * this.noiseScaleX,
@@ -340,7 +375,7 @@ class ExplainerStudio {
     const beta = betaMin + (betaMax - betaMin) * s;
     const integratedBeta = betaMin * s + 0.5 * (betaMax - betaMin) * s * s;
     const alpha = Math.exp(-0.5 * integratedBeta);
-    const dataVariance = 0.18 ** 2;
+    const dataVariance = this.dataModeSigma ** 2;
     const variance = alpha * alpha * dataVariance + (1 - alpha * alpha);
 
     const components = this.allBreedFixedClusters.map((breed) => {
@@ -358,6 +393,7 @@ class ExplainerStudio {
 
     components.forEach(component => {
       const weight = Math.exp(component.logWeight - maxLogWeight);
+      component.weight = weight;
       totalWeight += weight;
       weightedMeanX += weight * component.meanX;
       weightedMeanY += weight * component.meanY;
@@ -376,9 +412,50 @@ class ExplainerStudio {
       },
       breed: bestComponent.breed,
       responsibility: bestWeight / totalWeight,
+      modeResponsibilities: components
+        .map(component => ({ breed: component.breed, responsibility: component.weight / totalWeight }))
+        .sort((a, b) => b.responsibility - a.responsibility),
       scaleX,
       scaleY
     };
+  }
+
+  getModeDistances(pos) {
+    return this.allBreedFixedClusters
+      .map(breed => ({
+        breed,
+        distance: Math.hypot(
+          (pos.x - breed.x1.x) / this.noiseScaleX,
+          (pos.y - breed.x1.y) / this.noiseScaleY
+        )
+      }))
+      .sort((a, b) => a.distance - b.distance);
+  }
+
+  getModeMembership(pos) {
+    const boundaryRadius = this.dataModeSigma * this.modeBoundarySigma;
+    return this.getModeDistances(pos).filter(item => item.distance <= boundaryRadius);
+  }
+
+  getFinalModeStatus(pos) {
+    const matches = this.getModeMembership(pos);
+    if (!matches.length) {
+      const boundaryRadius = this.dataModeSigma * this.modeBoundarySigma;
+      const excess = this.getModeDistances(pos)[0].distance - boundaryRadius;
+      const outsideWeight = Math.min(0.85, 1 - Math.exp(-0.5 * (excess / boundaryRadius) ** 2));
+      return {
+        type: 'outside',
+        label: `기타 ${Math.round(outsideWeight * 100)}% · 2.5σ 경계 밖`,
+        outsideWeight,
+        matches
+      };
+    }
+    if (matches.length === 1) {
+      const breed = matches[0].breed;
+      return { type: 'single', label: breed.shortName || breed.name, breed, matches };
+    }
+    const names = matches.slice(0, 2).map(item => item.breed.shortName || item.breed.name);
+    return { type: 'mixed', label: `혼합 · ${names.join(' + ')}`, matches };
   }
 
   buildDiffusionPaths() {
@@ -386,10 +463,12 @@ class ExplainerStudio {
     const dt = 1 / steps;
     const center = { x: this.canvas.width * 0.12, y: this.canvas.height * 0.50 };
     this.diffusionSteps = steps;
+    this.diffusionStepComponents = [];
     this.diffusionPaths = this.noiseGrid.map((cell, idx) => {
-      const rng = mulberry32(this.seed * 100003 + idx * 7919 + 17);
+      const rng = mulberry32(this.seed * 100003 + idx * 7919 + this.diffusionNoiseRun * 104729 + 17);
       let pos = { ...cell.z0 };
       const path = [pos];
+      const components = [];
 
       for (let step = 0; step < steps; step++) {
         const tau = step / steps;
@@ -398,16 +477,31 @@ class ExplainerStudio {
         const driftY = 0.5 * stats.beta * stats.y.y + stats.beta * stats.score.y;
         const [noiseX, noiseY] = normalPair(rng);
         const diffusionScale = Math.sqrt(stats.beta * dt);
+        const drift = { x: driftX * dt, y: driftY * dt };
+        const noise = { x: diffusionScale * noiseX, y: diffusionScale * noiseY };
         const nextY = {
-          x: stats.y.x + driftX * dt + diffusionScale * noiseX,
-          y: stats.y.y + driftY * dt + diffusionScale * noiseY
+          x: stats.y.x + drift.x + noise.x,
+          y: stats.y.y + drift.y + noise.y
         };
-        pos = {
+        const nextPos = {
           x: center.x + nextY.x * stats.scaleX,
           y: center.y + nextY.y * stats.scaleY
         };
+        components.push({
+          from: pos,
+          driftEnd: {
+            x: pos.x + drift.x * stats.scaleX,
+            y: pos.y + drift.y * stats.scaleY
+          },
+          to: nextPos,
+          drift,
+          noise,
+          total: { x: drift.x + noise.x, y: drift.y + noise.y }
+        });
+        pos = nextPos;
         path.push(pos);
       }
+      this.diffusionStepComponents[idx] = components;
       return path;
     });
   }
@@ -483,6 +577,39 @@ class ExplainerStudio {
     };
   }
 
+  renderModeResponsibilities(responsibilities, outsideWeight = 0) {
+    const knownWeight = 1 - outsideWeight;
+    const top = responsibilities.slice(0, outsideWeight > 0 ? 2 : 3)
+      .map(item => ({ ...item, responsibility: item.responsibility * knownWeight }));
+    const remainingKnown = Math.max(0, knownWeight - top.reduce((sum, item) => sum + item.responsibility, 0));
+    const rows = [
+      ...top,
+      {
+        breed: { name: `나머지 ${Math.max(0, responsibilities.length - top.length)}개 known mode`, shortName: '나머지', color: '#64748b' },
+        responsibility: remainingKnown
+      }
+    ];
+    if (outsideWeight > 0) {
+      rows.push({
+        breed: { name: '2.5σ 경계 밖', shortName: '기타', color: '#fb7185' },
+        responsibility: outsideWeight
+      });
+    }
+    rows.sort((a, b) => b.responsibility - a.responsibility);
+
+    this.modeResponsibilityBars.innerHTML = rows.map((item, index) => {
+      const percentage = item.responsibility * 100;
+      const name = item.breed.shortName || item.breed.name;
+      return `
+        <div class="mode-candidate-row" title="${item.breed.name}">
+          <span class="mode-candidate-name">${index === 0 ? '🔥 ' : ''}${name}</span>
+          <span class="mode-candidate-track"><span class="mode-candidate-fill" style="display:block;width:${percentage}%;background:${item.breed.color}"></span></span>
+          <span class="mode-candidate-value">${percentage.toFixed(1)}%</span>
+        </div>
+      `;
+    }).join('');
+  }
+
   updateSelectedCellDetail() {
     const cell = this.noiseGrid[this.selectedCellIndex];
     if (!cell) return;
@@ -494,25 +621,50 @@ class ExplainerStudio {
     const isDiff = this.algorithm === 'diff';
     const pos = this.computeTrajectoryPos(cell.z0, cell.x1, this.currentTime, this.selectedCellIndex);
     const rgbZt = this.getCurrentRgbLatent(cell, pos);
-    const confidence = isDiff
-      ? Math.round(this.getDiffusionStats(pos, this.currentTime).responsibility * 100)
-      : 100;
+    const stepComponent = this.getDiffusionStepComponent(this.currentTime, this.selectedCellIndex);
+    const diffusionStats = isDiff ? this.getDiffusionStats(pos, this.currentTime) : null;
+    const finalStatus = isDiff && this.currentTime >= 0.999 ? this.getFinalModeStatus(pos) : null;
+    const confidence = isDiff ? Math.round(diffusionStats.responsibility * 100) : 100;
     const mainShortName = activeBreed.shortName || activeBreed.breedName;
 
     this.selectedCellName.textContent = `z₀-${cell.name} (시드 #${this.seed})`;
     this.selectedCellVal.textContent = `RGB z₀ = [${cell.rgbNoise.r >= 0 ? '+' : ''}${cell.rgbNoise.r.toFixed(2)}, ${cell.rgbNoise.g >= 0 ? '+' : ''}${cell.rgbNoise.g.toFixed(2)}, ${cell.rgbNoise.b >= 0 ? '+' : ''}${cell.rgbNoise.b.toFixed(2)}]`;
     this.selectedCellProjection.textContent = `2D 투영 π(z₀) = [${cell.noiseValue.x >= 0 ? '+' : ''}${cell.noiseValue.x.toFixed(2)}, ${cell.noiseValue.y >= 0 ? '+' : ''}${cell.noiseValue.y.toFixed(2)}]`;
-    this.selectedCellTarget.textContent = isDiff ? `${mainShortName} (현재 score mode)` : `${cell.breedName} (조건부 pairing)`;
+    this.selectedCellTarget.textContent = isDiff
+      ? (finalStatus ? finalStatus.label : `${mainShortName} (가장 큰 영향 mode)`)
+      : `${cell.breedName} (조건부 pairing)`;
 
     if (this.metricRgbZt) this.metricRgbZt.textContent = `[${rgbZt.r >= 0 ? '+' : ''}${rgbZt.r.toFixed(2)}, ${rgbZt.g >= 0 ? '+' : ''}${rgbZt.g.toFixed(2)}, ${rgbZt.b >= 0 ? '+' : ''}${rgbZt.b.toFixed(2)}]`;
     if (this.metricVectorVal) this.metricVectorVal.textContent = `[x: ${velVector.vx > 0 ? '+' : ''}${velVector.vx.toFixed(1)}, y: ${velVector.vy > 0 ? '+' : ''}${velVector.vy.toFixed(1)}]`;
     if (this.metricVectorLabel) this.metricVectorLabel.innerHTML = isDiff ? 'reverse-SDE drift b<sub>τ</sub>:' : '조건부 목표 u<sub>τ</sub>:';
     if (this.metricVectorStatus) this.metricVectorStatus.textContent = isDiff ? 'score + VP drift (시간에 따라 변화)' : '선택한 한 쌍에서만 일정';
+    this.diffusionStepBreakdown.hidden = !isDiff;
+    if (isDiff && stepComponent) {
+      const formatStep = vector => `[${vector.x >= 0 ? '+' : ''}${vector.x.toFixed(2)}, ${vector.y >= 0 ? '+' : ''}${vector.y.toFixed(2)}]`;
+      this.metricDriftStep.textContent = formatStep(stepComponent.drift);
+      this.metricNoiseStep.textContent = formatStep(stepComponent.noise);
+      this.metricTotalStep.textContent = formatStep(stepComponent.total);
+    }
     if (this.metricNearestName) this.metricNearestName.textContent = `${mainShortName}`;
-    if (this.metricConfidenceLabel) this.metricConfidenceLabel.textContent = isDiff ? 'mode posterior responsibility:' : '조건부 pairing:';
+    this.modeBoundaryRow.hidden = !isDiff;
+    if (isDiff) {
+      this.modeBoundaryStatus.textContent = finalStatus ? finalStatus.label : '진행 중 · τ=1에서 판정';
+      this.modeBoundaryStatus.style.color = !finalStatus ? '#94a3b8'
+        : finalStatus.type === 'single' ? '#22c55e'
+        : finalStatus.type === 'mixed' ? '#facc15' : '#fb7185';
+    }
+    if (this.metricConfidenceLabel) this.metricConfidenceLabel.textContent = isDiff ? 'mode responsibility:' : '조건부 pairing:';
     if (this.metricConfidence) this.metricConfidence.textContent = `${confidence}%`;
     if (this.metricConfBar) this.metricConfBar.style.width = `${confidence}%`;
-    if (this.targetBreedBadge) this.targetBreedBadge.textContent = isDiff ? `τ=${this.currentTime.toFixed(2)} score mode: ${mainShortName}` : `조건부 목적지: ${mainShortName}`;
+    this.metricConfidenceRow.hidden = isDiff;
+    this.metricConfidenceBar.hidden = isDiff;
+    this.modeResponsibilityList.hidden = !isDiff;
+    if (isDiff) this.renderModeResponsibilities(diffusionStats.modeResponsibilities, finalStatus?.outsideWeight || 0);
+    if (this.targetBreedBadge) {
+      this.targetBreedBadge.textContent = isDiff
+        ? (finalStatus ? `최종 판정: ${finalStatus.label}` : `τ=${this.currentTime.toFixed(2)} 가장 큰 영향: ${mainShortName}`)
+        : `조건부 목적지: ${mainShortName}`;
+    }
   }
 
   renderEvolutionCanvases() {
@@ -527,11 +679,38 @@ class ExplainerStudio {
 
       const cell = this.noiseGrid[this.selectedCellIndex] || this.noiseGrid[0];
       if (!cell) return;
-      const breedData = this.algorithm === 'diff'
-        ? this.getDiffusionStats(this.computeTrajectoryPos(cell.z0, cell.x1, t, this.selectedCellIndex), t).breed
-        : cell;
-      this.drawDenoisedCatOnContext(ectx, w, h, breedData, t);
+      if (this.algorithm === 'diff') {
+        const pos = this.computeTrajectoryPos(cell.z0, cell.x1, t, this.selectedCellIndex);
+        const stats = this.getDiffusionStats(pos, t);
+        const status = t >= 0.999 ? this.getFinalModeStatus(pos) : null;
+        if (status && status.type !== 'single') this.drawUnresolvedMode(ectx, w, h, stats, status);
+        else this.drawDenoisedCatOnContext(ectx, w, h, status?.breed || stats.breed, t);
+      } else {
+        this.drawDenoisedCatOnContext(ectx, w, h, cell, t);
+      }
     });
+  }
+
+  drawUnresolvedMode(ctx, w, h, stats, status) {
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, w, h);
+    const knownWeight = 1 - (status.outsideWeight || 0);
+    stats.modeResponsibilities.slice(0, 3).forEach((item, index) => {
+      ctx.save();
+      ctx.globalAlpha = 0.2 + item.responsibility * knownWeight * 0.8;
+      ctx.fillStyle = item.breed.color;
+      ctx.beginPath();
+      ctx.arc(w / 2 + (index - 1) * w * 0.12, h / 2, Math.min(w, h) * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 ${w > 100 ? 16 : 11}px Outfit`;
+    ctx.textAlign = 'center';
+    const unresolvedLabel = status.type === 'outside'
+      ? `기타 ${Math.round(status.outsideWeight * 100)}%`
+      : '혼합';
+    ctx.fillText(unresolvedLabel, w / 2, h / 2 + 5);
   }
 
   drawDenoisedCatOnContext(ctx, w, h, breedData, t) {
@@ -665,26 +844,32 @@ class ExplainerStudio {
   }
 
   renderTargetImage() {
-    const breedData = this.getActivePredictedBreed(this.currentTime) || this.noiseGrid[this.selectedCellIndex];
-    if (!breedData) return;
+    const cell = this.noiseGrid[this.selectedCellIndex];
+    if (!cell) return;
 
     const ctx = this.targetCtx;
     const w = this.targetCanvas.width;
     const h = this.targetCanvas.height;
+    const isDiff = this.algorithm === 'diff';
+    const pos = this.computeTrajectoryPos(cell.z0, cell.x1, this.currentTime, this.selectedCellIndex);
+    const stats = isDiff ? this.getDiffusionStats(pos, this.currentTime) : null;
+    const finalStatus = isDiff && this.currentTime >= 0.999 ? this.getFinalModeStatus(pos) : null;
+    const breedData = isDiff ? (finalStatus?.breed || stats.breed) : cell;
 
     ctx.clearRect(0, 0, w, h);
 
-    this.drawDenoisedCatOnContext(ctx, w, h, breedData, this.currentTime);
+    if (finalStatus && finalStatus.type !== 'single') this.drawUnresolvedMode(ctx, w, h, stats, finalStatus);
+    else this.drawDenoisedCatOnContext(ctx, w, h, breedData, this.currentTime);
 
     ctx.fillStyle = '#ffffff';
     ctx.font = '700 12px Outfit';
     ctx.textAlign = 'center';
 
     const mainShortName = breedData.shortName || breedData.breedName;
-    const isDiff = this.algorithm === 'diff';
-    const labelPrefix = isDiff ? `τ=${this.currentTime.toFixed(2)} score mode: ` : '조건부 목적지: ';
-    
-    ctx.fillText(`${labelPrefix}${mainShortName}`, w / 2, h - 10);
+    const label = finalStatus
+      ? `최종 판정: ${finalStatus.label}`
+      : `${isDiff ? `τ=${this.currentTime.toFixed(2)} 가장 큰 영향: ` : '조건부 목적지: '}${mainShortName}`;
+    ctx.fillText(label, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
   }
@@ -733,6 +918,69 @@ class ExplainerStudio {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+
+  drawDiffusionHistory(ctx, idx, t, color, width) {
+    const path = this.diffusionPaths[idx];
+    const completedStep = Math.floor(t * this.diffusionSteps);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let step = 1; step <= completedStep; step++) ctx.lineTo(path[step].x, path[step].y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawDiffusionStepDecomposition(ctx, idx, t) {
+    const component = this.getDiffusionStepComponent(t, idx);
+    if (!component) return;
+
+    const drift = {
+      x: component.driftEnd.x - component.from.x,
+      y: component.driftEnd.y - component.from.y
+    };
+    const noise = {
+      x: component.to.x - component.driftEnd.x,
+      y: component.to.y - component.driftEnd.y
+    };
+    const total = { x: drift.x + noise.x, y: drift.y + noise.y };
+    const maxLength = Math.max(Math.hypot(drift.x, drift.y), Math.hypot(noise.x, noise.y), Math.hypot(total.x, total.y), 1);
+    const scale = Math.min(1, 90 / maxLength);
+    const base = component.from;
+    const driftEnd = { x: base.x + drift.x * scale, y: base.y + drift.y * scale };
+    const totalEnd = { x: base.x + total.x * scale, y: base.y + total.y * scale };
+
+    this.drawArrowHead(ctx, base.x, base.y, totalEnd.x, totalEnd.y, '#f8fafc', 5);
+    this.drawArrowHead(ctx, base.x, base.y, driftEnd.x, driftEnd.y, '#facc15', 3);
+    this.drawArrowHead(ctx, driftEnd.x, driftEnd.y, totalEnd.x, totalEnd.y, '#fb7185', 3);
+
+    ctx.save();
+    ctx.font = '700 10px JetBrains Mono';
+    ctx.fillStyle = '#facc15';
+    ctx.fillText('drift', driftEnd.x + 4, driftEnd.y - 5);
+    ctx.fillStyle = '#fb7185';
+    ctx.fillText('noise', totalEnd.x + 4, totalEnd.y + 12);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText('Δz', totalEnd.x + 4, totalEnd.y - 5);
+    ctx.restore();
+  }
+
+  drawModeCandidateRays(ctx, pos, stats) {
+    stats.modeResponsibilities.slice(0, 3).forEach(({ breed, responsibility }) => {
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.7, 0.15 + responsibility);
+      ctx.strokeStyle = breed.color;
+      ctx.lineWidth = 1 + responsibility * 7;
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      ctx.lineTo(breed.x1.x, breed.x1.y);
+      ctx.stroke();
+      ctx.restore();
+    });
   }
 
   // RENDER DYNAMIC BREED CLUSTERS ON 2D MANIFOLD!
@@ -789,12 +1037,18 @@ class ExplainerStudio {
 
     // Calculate Dynamic Combined Batch Centroid (\bar{x}_{center})
     const centerPt = this.getCombinedCenterPoint(this.currentTime);
-    const activeBreed = this.getActivePredictedBreed(this.currentTime);
+    let activeBreed = this.getActivePredictedBreed(this.currentTime);
+    if (this.algorithm === 'diff' && this.currentTime >= 0.999) {
+      const cell = this.noiseGrid[this.selectedCellIndex];
+      const status = this.getFinalModeStatus(this.getDiffusionPosition(this.currentTime, this.selectedCellIndex));
+      activeBreed = status.type === 'single' ? status.breed : null;
+    }
 
     // 3. Breed Sub-Clusters on Manifold
     const activeClustersToDraw = this.algorithm === 'diff' ? this.allBreedFixedClusters : this.fixedBreedMap;
 
     if (activeClustersToDraw) {
+      const boundaryRadius = this.dataModeSigma * this.modeBoundarySigma * this.noiseScaleX;
       activeClustersToDraw.forEach((breedCluster) => {
         const isWinner = activeBreed && (activeBreed.breedName === breedCluster.name || activeBreed.name === breedCluster.name);
         
@@ -804,7 +1058,7 @@ class ExplainerStudio {
         ctx.lineWidth = isWinner ? 3.0 : 1.0;
 
         ctx.beginPath();
-        ctx.arc(breedCluster.x1.x, breedCluster.x1.y, isWinner ? 18 : 12, 0, Math.PI * 2);
+        ctx.arc(breedCluster.x1.x, breedCluster.x1.y, boundaryRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
@@ -816,7 +1070,8 @@ class ExplainerStudio {
 
         ctx.fillStyle = isWinner ? '#ffffff' : '#9ca3af';
         ctx.font = isWinner ? '700 11px Outfit' : '500 9px Outfit';
-        ctx.fillText(`${isWinner ? '🔥 ' : ''}${breedCluster.shortName}`, breedCluster.x1.x - 14, breedCluster.x1.y - 18);
+        ctx.textAlign = 'center';
+        ctx.fillText(`${isWinner ? '🔥 ' : ''}${breedCluster.shortName}`, breedCluster.x1.x, breedCluster.x1.y - boundaryRadius - 5);
         ctx.restore();
       });
     }
@@ -837,40 +1092,35 @@ class ExplainerStudio {
     ctx.fillText(`Gaussian prior z₀ (시드 #${this.seed})`, priorBounds.x, priorBounds.y - 12);
     ctx.restore();
 
-    // 5. RENDER TRAJECTORIES & CLEAN SINGLE BREED NAME VECTOR BADGES (e.g. v_삼색이 [+42.1, -15.8])
+    // 5. Render the selected sample's path for the active metric mode.
     this.noiseGrid.forEach((cell, idx) => {
       const isSelectedCell = idx === this.selectedCellIndex;
-      const pos = this.computeTrajectoryPos(cell.z0, cell.x1, this.currentTime, idx);
       const isFlow = this.algorithm === 'flow';
+      const pos = isFlow
+        ? this.getFlowPosition(cell, this.currentTime)
+        : this.getDiffusionPosition(this.currentTime, idx);
       const velVec = this.getVelocityVector(cell, this.currentTime, idx);
 
-      ctx.save();
-      ctx.lineWidth = isSelectedCell ? 3.0 : 1.2;
-
-      if (isFlow) {
-        ctx.strokeStyle = isSelectedCell ? '#00f0ff' : 'rgba(56, 189, 248, 0.35)';
-        ctx.shadowBlur = isSelectedCell ? 10 : 0;
-        ctx.shadowColor = '#00f0ff';
-        
-        ctx.beginPath();
-        ctx.moveTo(cell.z0.x, cell.z0.y);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-
-      } else {
-        ctx.strokeStyle = isSelectedCell ? '#ff007f' : 'rgba(244, 63, 94, 0.35)';
-        ctx.shadowBlur = isSelectedCell ? 10 : 0;
-        ctx.shadowColor = '#ff007f';
-        ctx.setLineDash([4, 4]);
-
-        const path = this.diffusionPaths[idx];
-        const completedStep = Math.floor(this.currentTime * this.diffusionSteps);
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        for (let step = 1; step <= completedStep; step++) ctx.lineTo(path[step].x, path[step].y);
-        ctx.stroke();
+      if (isSelectedCell && !isFlow) {
+        this.drawModeCandidateRays(ctx, pos, this.getDiffusionStats(pos, this.currentTime));
       }
-      ctx.restore();
+
+      if (isSelectedCell) {
+        if (isFlow) {
+          ctx.save();
+          ctx.strokeStyle = '#00f0ff';
+          ctx.lineWidth = 3;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#00f0ff';
+          ctx.beginPath();
+          ctx.moveTo(cell.z0.x, cell.z0.y);
+          ctx.lineTo(pos.x, pos.y);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          this.drawDiffusionHistory(ctx, idx, this.currentTime, '#ff007f', 3);
+        }
+      }
 
       // Initial Noise Dot z0
       ctx.save();
@@ -880,37 +1130,32 @@ class ExplainerStudio {
       ctx.fill();
       ctx.restore();
 
-      // Active Moving Dot x_t
       ctx.save();
       ctx.fillStyle = isFlow ? '#38bdf8' : '#f43f5e';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, isSelectedCell ? 7 : 4.5, 0, Math.PI * 2);
       ctx.fill();
+      if (isSelectedCell) ctx.stroke();
       ctx.restore();
 
-      if (this.currentTime < 0.98) {
-        const arrowColor = isSelectedCell ? (isFlow ? '#00f0ff' : '#facc15') : (isFlow ? 'rgba(56, 189, 248, 0.75)' : 'rgba(244, 63, 94, 0.75)');
-        const arrowLen = isSelectedCell ? 48 : 34;
-        const strokeW = isSelectedCell ? 3.2 : 2.0;
-
-        const vecNorm = Math.sqrt(velVec.vx * velVec.vx + velVec.vy * velVec.vy) || 1;
-        const endX = pos.x + (velVec.vx / vecNorm) * arrowLen;
-        const endY = pos.y + (velVec.vy / vecNorm) * arrowLen;
-
-        this.drawArrowHead(ctx, pos.x, pos.y, endX, endY, arrowColor, strokeW);
-
-        if (isSelectedCell) {
+      if (isSelectedCell && this.currentTime < 0.98) {
+        if (isFlow) {
+          const vecNorm = Math.sqrt(velVec.vx * velVec.vx + velVec.vy * velVec.vy) || 1;
+          const endX = pos.x + (velVec.vx / vecNorm) * 48;
+          const endY = pos.y + (velVec.vy / vecNorm) * 48;
+          this.drawArrowHead(ctx, pos.x, pos.y, endX, endY, '#00f0ff', 3.2);
           const realtimeTarget = this.getRealtimeParticleTarget(cell, this.currentTime, idx);
-          const singleBreedName = isFlow ? cell.name : (realtimeTarget.shortName || realtimeTarget.name);
-          const vecName = isFlow ? `u_${singleBreedName}` : `b_${singleBreedName}`;
-
           ctx.save();
-          ctx.fillStyle = arrowColor;
+          ctx.fillStyle = '#00f0ff';
           ctx.font = '700 11px JetBrains Mono';
           ctx.shadowBlur = 8;
-          ctx.shadowColor = arrowColor;
-          ctx.fillText(`${vecName} [${velVectorStr(velVec.vx)}, ${velVectorStr(velVec.vy)}]`, endX + 4, endY - 6);
+          ctx.shadowColor = '#00f0ff';
+          ctx.fillText(`u_${realtimeTarget.name} [${velVectorStr(velVec.vx)}, ${velVectorStr(velVec.vy)}]`, endX + 4, endY - 6);
           ctx.restore();
+        } else {
+          this.drawDiffusionStepDecomposition(ctx, idx, this.currentTime);
         }
       }
     });
@@ -955,14 +1200,14 @@ class ExplainerStudio {
     }
   }
 
-  computeTrajectoryPos(z0, x1, t, seedOffset) {
-    if (this.algorithm === 'flow') {
-      return {
-        x: (1 - t) * z0.x + t * x1.x,
-        y: (1 - t) * z0.y + t * x1.y
-      };
-    }
+  getFlowPosition(cell, t) {
+    return {
+      x: (1 - t) * cell.z0.x + t * cell.x1.x,
+      y: (1 - t) * cell.z0.y + t * cell.x1.y
+    };
+  }
 
+  getDiffusionPosition(t, seedOffset) {
     const path = this.diffusionPaths[seedOffset];
     const scaledStep = Math.max(0, Math.min(this.diffusionSteps, t * this.diffusionSteps));
     const step = Math.floor(scaledStep);
@@ -974,9 +1219,23 @@ class ExplainerStudio {
     };
   }
 
+  getDiffusionStepComponent(t, seedOffset) {
+    const components = this.diffusionStepComponents[seedOffset];
+    const step = Math.min(this.diffusionSteps - 1, Math.floor(t * this.diffusionSteps));
+    return components && components[Math.max(0, step)];
+  }
+
+  computeTrajectoryPos(z0, x1, t, seedOffset) {
+    if (this.algorithm === 'flow') return this.getFlowPosition({ z0, x1 }, t);
+    return this.getDiffusionPosition(t, seedOffset);
+  }
+
   selfCheck() {
     const path = this.diffusionPaths[0];
+    const components = this.diffusionStepComponents[0];
+    const firstComponent = components[0];
     const stats = this.getDiffusionStats(path[Math.floor(path.length / 2)], 0.5);
+    const responsibilitySum = stats.modeResponsibilities.reduce((sum, item) => sum + item.responsibility, 0);
     const cell = this.noiseGrid[0];
     const rgbAtStart = this.getCurrentRgbLatent(cell, cell.z0);
     const projectedX = (cell.rgbNoise.r - cell.rgbNoise.g) / Math.sqrt(2);
@@ -988,10 +1247,18 @@ class ExplainerStudio {
       noise.z0.y >= priorBounds.y &&
       noise.z0.y <= priorBounds.y + priorBounds.height
     );
+    const outsideStatus = this.getFinalModeStatus({ x: -1e6, y: -1e6 });
+    const expectedNoiseScale = Math.min(priorBounds.width, priorBounds.height) * 0.18;
     if (
       path.length !== this.diffusionSteps + 1 ||
+      components.length !== this.diffusionSteps ||
+      Math.abs(firstComponent.drift.x + firstComponent.noise.x - firstComponent.total.x) > 1e-12 ||
+      Math.abs(firstComponent.drift.y + firstComponent.noise.y - firstComponent.total.y) > 1e-12 ||
+      Math.abs(firstComponent.to.x - path[1].x) > 1e-12 ||
+      Math.abs(firstComponent.to.y - path[1].y) > 1e-12 ||
       !Number.isFinite(stats.score.x) ||
       !Number.isFinite(stats.score.y) ||
+      Math.abs(responsibilitySum - 1) > 1e-12 ||
       stats.responsibility <= 0 ||
       stats.responsibility > 1 ||
       Math.abs(cell.noiseValue.x - projectedX) > 1e-12 ||
@@ -999,7 +1266,11 @@ class ExplainerStudio {
       Math.abs(cell.rgbNoise.r - rgbAtStart.r) > 1e-12 ||
       Math.abs(cell.rgbNoise.g - rgbAtStart.g) > 1e-12 ||
       Math.abs(cell.rgbNoise.b - rgbAtStart.b) > 1e-12 ||
-      !allNoiseInsidePrior
+      !allNoiseInsidePrior ||
+      this.noiseScaleX !== this.noiseScaleY ||
+      Math.abs(this.noiseScaleX - expectedNoiseScale) > 1e-12 ||
+      outsideStatus.type !== 'outside' ||
+      outsideStatus.outsideWeight !== 0.85
     ) {
       throw new Error('Diffusion toy model self-check failed');
     }

@@ -304,6 +304,23 @@ body {
   color: var(--text-muted);
 }
 
+.metric-row[hidden], .confidence-bar-bg[hidden] { display: none; }
+
+.step-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 0;
+  border-top: 1px solid var(--bg-card-border);
+  border-bottom: 1px solid var(--bg-card-border);
+}
+
+.step-breakdown[hidden] { display: none; }
+
+.term-drift { color: #facc15; }
+.term-noise { color: #fb7185; }
+.term-total { color: #f8fafc; }
+
 .font-mono {
   font-family: var(--font-mono);
   color: var(--accent-cyan);
@@ -323,6 +340,63 @@ body {
   background: linear-gradient(90deg, var(--accent-cyan), var(--primary));
   border-radius: 4px;
   transition: width 0.2s ease;
+}
+
+.mode-responsibility-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 7px;
+  border-top: 1px solid var(--bg-card-border);
+}
+
+.mode-responsibility-list[hidden] { display: none; }
+
+.mode-list-title {
+  font-size: 0.7rem;
+  color: #cbd5e1;
+}
+
+.mode-candidate-row {
+  display: grid;
+  grid-template-columns: 82px 1fr 38px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.68rem;
+}
+
+.mode-candidate-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #e2e8f0;
+}
+
+.mode-candidate-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mode-candidate-fill {
+  height: 100%;
+  min-width: 1px;
+  border-radius: inherit;
+}
+
+.mode-candidate-value {
+  text-align: right;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+}
+
+.mode-mixture-note {
+  margin-top: 3px;
+  font-size: 0.64rem;
+  line-height: 1.3;
+  color: #94a3b8;
 }
 
 /* 3x3 Evolution Steps */
@@ -592,6 +666,8 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+.recording-badge.hidden { display: none; }
 
 .pulse-dot {
   width: 8px;

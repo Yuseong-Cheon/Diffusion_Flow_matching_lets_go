@@ -118,7 +118,7 @@
             <div class="legend-item"><span class="legend-color legend-outer"></span> toy 데이터 공간</div>
             <div class="legend-item"><span class="legend-color legend-mid"></span> 조건 분포 p(x | c)</div>
             <div class="legend-item"><span class="legend-color legend-vector"></span> ➔ 조건부 target / SDE drift</div>
-            <div class="legend-item"><span class="legend-color legend-winner"></span> 🔥 현재 score mode</div>
+            <div class="legend-item"><span class="legend-color legend-winner"></span> 🔥 가장 큰 영향 mode</div>
           </div>
         </div>
 
@@ -146,6 +146,11 @@
               <option value="60" selected>60</option>
             </select>
           </div>
+
+          <button id="btn-resample-diffusion" class="btn btn-sm btn-ghost" title="초기 z₀는 유지하고 Brownian noise만 다시 뽑습니다.">
+            <i data-lucide="refresh-cw"></i>
+            <span id="diffusion-run-label">SDE noise #1</span>
+          </button>
 
           <div class="speed-control">
             <label>속도:</label>
@@ -176,20 +181,43 @@
             <span id="metric-vector-label">조건부 목표 u<sub>τ</sub>:</span>
             <strong id="metric-vector-val" class="font-mono">[x: +0.0, y: +0.0]</strong>
           </div>
+          <div id="diffusion-step-breakdown" class="step-breakdown" hidden>
+            <div class="metric-row">
+              <span class="term-drift">● drift · Δτ</span>
+              <strong id="metric-drift-step" class="font-mono">[+0.00, +0.00]</strong>
+            </div>
+            <div class="metric-row">
+              <span class="term-noise">● random noise</span>
+              <strong id="metric-noise-step" class="font-mono">[+0.00, +0.00]</strong>
+            </div>
+            <div class="metric-row">
+              <span class="term-total">● 실제 Δz</span>
+              <strong id="metric-total-step" class="font-mono">[+0.00, +0.00]</strong>
+            </div>
+          </div>
           <div class="metric-row">
             <span>벡터 의미:</span>
             <strong id="metric-vector-status" class="highlight-target">한 쌍의 직선 target</strong>
           </div>
           <div class="metric-row">
-            <span>현재 가리키는 mode:</span>
+            <span>가장 큰 영향 mode:</span>
             <strong id="metric-nearest-name" class="font-mono">치즈 냥이</strong>
           </div>
-          <div class="metric-row">
+          <div class="metric-row" id="mode-boundary-row" hidden>
+            <span>2.5σ 최종 판정:</span>
+            <strong id="mode-boundary-status" class="font-mono">진행 중</strong>
+          </div>
+          <div class="metric-row" id="metric-confidence-row">
             <span id="metric-confidence-label">조건부 pairing:</span>
             <strong id="metric-confidence" class="font-mono">100%</strong>
           </div>
-          <div class="confidence-bar-bg">
+          <div class="confidence-bar-bg" id="metric-confidence-bar">
             <div class="confidence-bar-fill" id="metric-conf-bar" style="width: 88.4%;"></div>
+          </div>
+          <div id="mode-responsibility-list" class="mode-responsibility-list" hidden>
+            <div class="mode-list-title">현재 z<sub>τ</sub>의 주변 분포 영향도 p(mode | z<sub>τ</sub>, τ)</div>
+            <div id="mode-responsibility-bars"></div>
+            <div class="mode-mixture-note">τ=1에서 2.5σ 밖이면 거리 기반 ‘기타’(표시 상한 85%)와 가까운 known mode 영향을 함께 표시</div>
           </div>
         </div>
 
