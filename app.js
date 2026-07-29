@@ -1,8 +1,6 @@
 /**
  * Generative Model Explainer Engine
- * Dynamic SDE Multi-Breed Manifold Sampling!
- * In Diffusion SDE mode, SDE stochastic drift dynamically samples fresh diverse target breeds
- * from the full 20-species pool across diverse manifold coordinates as time advances!
+ * Flow Matching conditional paths and a score-based reverse-SDE toy model.
  */
 
 function mulberry32(a) {
@@ -12,6 +10,12 @@ function mulberry32(a) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
+}
+
+function normalPair(rng) {
+  const radius = Math.sqrt(-2 * Math.log(Math.max(rng(), Number.EPSILON)));
+  const angle = 2 * Math.PI * rng();
+  return [radius * Math.cos(angle), radius * Math.sin(angle)];
 }
 
 class ExplainerStudio {
@@ -31,15 +35,19 @@ class ExplainerStudio {
     
     this.selectedCellName = document.getElementById('selected-cell-name');
     this.selectedCellVal = document.getElementById('selected-cell-val');
+    this.selectedCellProjection = document.getElementById('selected-cell-projection');
     this.selectedCellTarget = document.getElementById('selected-cell-target');
     this.targetBreedBadge = document.getElementById('target-breed-badge');
     this.predictedX0Status = document.getElementById('predicted-x0-status');
     
     // Velocity Vector Metric DOM
+    this.metricRgbZt = document.getElementById('metric-rgb-zt');
     this.metricVectorVal = document.getElementById('metric-vector-val');
     this.metricVectorStatus = document.getElementById('metric-vector-status');
+    this.metricVectorLabel = document.getElementById('metric-vector-label');
     this.metricNearestName = document.getElementById('metric-nearest-name');
     this.metricConfidence = document.getElementById('metric-confidence');
+    this.metricConfidenceLabel = document.getElementById('metric-confidence-label');
     this.metricConfBar = document.getElementById('metric-conf-bar');
 
     this.btnModeFlow = document.getElementById('btn-mode-flow');
@@ -48,6 +56,7 @@ class ExplainerStudio {
     this.btnPlayPause = document.getElementById('btn-play-pause');
     this.btnReset = document.getElementById('btn-reset');
     this.scrubber = document.getElementById('scrubber');
+    this.diffusionStepSelect = document.getElementById('diffusion-step-select');
     this.speedSelect = document.getElementById('speed-select');
     this.btnExportVideo = document.getElementById('btn-export-video');
 
@@ -63,7 +72,6 @@ class ExplainerStudio {
     // Data Structures
     this.noiseGrid = [];
     this.winningBreed = null;
-    this.fixedFlowWinner = null;
     
     // Video Recorder
     this.mediaRecorder = null;
@@ -90,7 +98,7 @@ class ExplainerStudio {
   setupEventListeners() {
     window.addEventListener('resize', () => {
       this.initCanvasSize();
-      this.renderManifold();
+      this.generateSeedData();
     });
 
     this.promptSelect.addEventListener('change', (e) => {
@@ -115,7 +123,7 @@ class ExplainerStudio {
       this.algorithm = 'flow';
       this.btnModeFlow.classList.add('active');
       this.btnModeDiff.classList.remove('active');
-      this.predictedX0Status.textContent = "플로우 매칭 모드: t=0 노이즈에서 시작해 고유 위치의 고양이 특징이 일직선으로 선명해집니다.";
+      this.predictedX0Status.textContent = "선택한 (z₀, x₁) 쌍의 조건부 target uτ를 따라 직선으로 이동합니다. 학습된 주변 속도장은 일반적으로 위치와 시간에 따라 달라집니다.";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -124,7 +132,7 @@ class ExplainerStudio {
       this.algorithm = 'diff';
       this.btnModeDiff.classList.add('active');
       this.btnModeFlow.classList.remove('active');
-      this.predictedX0Status.textContent = "디퓨전 SDE 모드: 확률적 뜀박질에 따라 20개 모든 고양이 품종이 다양한 위치에서 동적으로 탐색됩니다!";
+      this.predictedX0Status.textContent = "Gaussian-mixture의 정확한 score로 reverse SDE를 적분합니다. 확률적 경로는 흔들리지만 score가 데이터 mode로 이끕니다.";
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
@@ -137,6 +145,13 @@ class ExplainerStudio {
 
     this.speedSelect.addEventListener('change', (e) => {
       this.speed = parseFloat(e.target.value);
+    });
+
+    this.diffusionStepSelect.addEventListener('change', () => {
+      this.buildDiffusionPaths();
+      this.selfCheck();
+      this.updateSelectedCellDetail();
+      this.renderTargetImage();
     });
 
     this.btnPlayPause.addEventListener('click', () => {
@@ -159,7 +174,7 @@ class ExplainerStudio {
   }
 
   generateSeedData() {
-    const rng = mulberry32(this.seed * 9999 + (this.prompt === 'cat' ? 100 : this.prompt === 'dog' ? 200 : 300));
+    const rng = mulberry32(this.seed * 9999 + (this.prompt === 'cat' ? 100 : 200));
     this.noiseGrid = [];
 
     const richPools = {
@@ -206,28 +221,6 @@ class ExplainerStudio {
         { id: 17, name: '요크셔 테리어', shortName: '요크셔', color: '#ca8a04', pattern: 'poodle' },
         { id: 18, name: '도베르만', shortName: '도베르만', color: '#090d16', pattern: 'shiba' },
         { id: 19, name: '스피츠', shortName: '스피츠', color: '#f1f5f9', pattern: 'pome' }
-      ],
-      car: [
-        { id: 0, name: '레드 슈퍼카', shortName: '레드슈퍼카', color: '#f43f5e', pattern: 'super' },
-        { id: 1, name: '사이버 트럭', shortName: '사이버트럭', color: '#94a3b8', pattern: 'truck' },
-        { id: 2, name: '클래식 세단', shortName: '클래식세단', color: '#3b82f6', pattern: 'sedan' },
-        { id: 3, name: '오프로드 SUV', shortName: '오프로드SUV', color: '#84cc16', pattern: 'suv' },
-        { id: 4, name: '미래형 컨셉카', shortName: '컨셉카', color: '#a855f7', pattern: 'concept' },
-        { id: 5, name: 'F1 레이싱카', shortName: 'F1레이싱카', color: '#eab308', pattern: 'f1' },
-        { id: 6, name: '옐로우 컨버터블', shortName: '컨버터블', color: '#ec4899', pattern: 'open' },
-        { id: 7, name: '빈티지 로드스터', shortName: '로드스터', color: '#f97316', pattern: 'vintage' },
-        { id: 8, name: '전기 럭셔리 픽업', shortName: '전기픽업', color: '#0ea5e9', pattern: 'truck' },
-        { id: 9, name: '에어로 하이퍼카', shortName: '하이퍼카', color: '#10b981', pattern: 'super' },
-        { id: 10, name: '랠리 크로스카', shortName: '랠리카', color: '#facc15', pattern: 'f1' },
-        { id: 11, name: '몬스터 트럭', shortName: '몬스터트럭', color: '#ef4444', pattern: 'suv' },
-        { id: 12, name: '미니 쿠퍼', shortName: '미니쿠퍼', color: '#06b6d4', pattern: 'sedan' },
-        { id: 13, name: '경찰 파트롤 세단', shortName: '경찰세단', color: '#38bdf8', pattern: 'sedan' },
-        { id: 14, name: '소방 구급 트럭', shortName: '소방트럭', color: '#dc2626', pattern: 'truck' },
-        { id: 15, name: '옐로우 택시', shortName: '옐로우택시', color: '#eab308', pattern: 'sedan' },
-        { id: 16, name: '스쿨 버스', shortName: '스쿨버스', color: '#f59e0b', pattern: 'suv' },
-        { id: 17, name: '캠핑 버스', shortName: '캠핑버스', color: '#84cc16', pattern: 'suv' },
-        { id: 18, name: '자율주행 로보택시', shortName: '로보택시', color: '#a855f7', pattern: 'concept' },
-        { id: 19, name: '스노우 모빌', shortName: '스노우모빌', color: '#e2e8f0', pattern: 'concept' }
       ]
     };
 
@@ -236,57 +229,76 @@ class ExplainerStudio {
     const h = this.canvas.height;
 
     const promptCenters = {
-      cat: { x: w * 0.65, y: h * 0.45, radius: 130 },
-      dog: { x: w * 0.62, y: h * 0.75, radius: 120 },
-      car: { x: w * 0.35, y: h * 0.70, radius: 125 }
+      cat: { x: w * 0.65, y: h * 0.45, radiusX: w * 0.162, radiusY: h * 0.290 },
+      dog: { x: w * 0.62, y: h * 0.72, radiusX: w * 0.148, radiusY: h * 0.266 }
     };
     const classCenter = promptCenters[this.prompt];
 
     // EVERY SINGLE BREED IN THE 20-SPECIES POOL HAS ITS OWN UNIQUE DEDICATED (x, y) POSITION ON THE MANIFOLD!
     const allBreedFixedClusters = fullPool.map((breed) => {
       const angle = (breed.id / 20) * Math.PI * 2;
-      const radiusDist = classCenter.radius * (0.55 + ((breed.id % 3) * 0.15));
+      const radiusFactor = 0.55 + ((breed.id % 3) * 0.15);
       return {
         ...breed,
+        breedName: breed.name,
+        targetColor: breed.color,
         x1: {
-          x: classCenter.x + Math.cos(angle) * radiusDist,
-          y: classCenter.y + Math.sin(angle) * radiusDist
+          x: classCenter.x + Math.cos(angle) * classCenter.radiusX * radiusFactor,
+          y: classCenter.y + Math.sin(angle) * classCenter.radiusY * radiusFactor
         }
       };
     });
 
-    const sampledPool = [...allBreedFixedClusters].sort(() => rng() - 0.5).slice(0, 9);
-    const winnerIndex = Math.floor(rng() * 9);
+    const shuffledPool = [...allBreedFixedClusters];
+    for (let i = shuffledPool.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
+    }
+    const sampledPool = shuffledPool.slice(0, 9);
 
     for (let i = 0; i < 9; i++) {
-      const r = Math.floor(rng() * 210 + 45);
-      const g = Math.floor(rng() * 210 + 45);
-      const b = Math.floor(rng() * 210 + 45);
-
-      const row = Math.floor(i / 3);
-      const col = i % 3;
-      const z0x = w * 0.12 + (col - 1) * 35 + (rng() - 0.5) * 15;
-      const z0y = h * 0.50 + (row - 1) * 35 + (rng() - 0.5) * 15;
+      const [noiseR, noiseG] = normalPair(rng);
+      const [noiseB] = normalPair(rng);
+      const noiseX = (noiseR - noiseG) / Math.sqrt(2);
+      const noiseY = (noiseR + noiseG - 2 * noiseB) / Math.sqrt(6);
+      const r = Math.max(0, Math.min(255, Math.round(128 + noiseR * 45)));
+      const g = Math.max(0, Math.min(255, Math.round(128 + noiseG * 45)));
+      const b = Math.max(0, Math.min(255, Math.round(128 + noiseB * 45)));
 
       const targetBreed = sampledPool[i];
 
       this.noiseGrid.push({
-        name: targetBreed.shortName,
+        name: String.fromCharCode(65 + i),
         fullName: targetBreed.name,
+        targetShortName: targetBreed.shortName,
         r, g, b,
-        z0: { x: z0x, y: z0y },
+        rgbNoise: { r: noiseR, g: noiseG, b: noiseB },
+        noiseValue: { x: noiseX, y: noiseY },
+        z0: null,
         x1: targetBreed.x1,
         breedName: targetBreed.name,
         targetColor: targetBreed.color,
-        pattern: targetBreed.pattern,
-        isSeedWinner: i === winnerIndex
+        pattern: targetBreed.pattern
       });
     }
 
+    const priorBounds = this.getPriorBounds();
+    const center = { x: priorBounds.x + priorBounds.width / 2, y: priorBounds.y + priorBounds.height / 2 };
+    const maxNoiseX = Math.max(1, ...this.noiseGrid.map(cell => Math.abs(cell.noiseValue.x)));
+    const maxNoiseY = Math.max(1, ...this.noiseGrid.map(cell => Math.abs(cell.noiseValue.y)));
+    this.noiseScaleX = priorBounds.width * 0.42 / maxNoiseX;
+    this.noiseScaleY = priorBounds.height * 0.42 / maxNoiseY;
+    this.noiseGrid.forEach(cell => {
+      cell.z0 = {
+        x: center.x + cell.noiseValue.x * this.noiseScaleX,
+        y: center.y + cell.noiseValue.y * this.noiseScaleY
+      };
+    });
+
     this.fixedBreedMap = sampledPool;
     this.allBreedFixedClusters = allBreedFixedClusters;
-    this.fullPool = fullPool;
-    this.fixedFlowWinner = this.noiseGrid[winnerIndex];
+    this.buildDiffusionPaths();
+    this.selfCheck();
 
     this.renderNoiseGridDOM();
     this.updateSelectedCellDetail();
@@ -302,8 +314,8 @@ class ExplainerStudio {
       cellEl.style.backgroundColor = `rgb(${cell.r}, ${cell.g}, ${cell.b})`;
       
       cellEl.innerHTML = `
-        <span class="cell-name">${cell.name}</span>
-        <span class="cell-val">[${cell.r}, ${cell.g}, ${cell.b}]</span>
+        <span class="cell-name">${cell.name} (${cell.targetShortName})</span>
+        <span class="cell-val">[${cell.rgbNoise.r >= 0 ? '+' : ''}${cell.rgbNoise.r.toFixed(1)},${cell.rgbNoise.g >= 0 ? '+' : ''}${cell.rgbNoise.g.toFixed(1)},${cell.rgbNoise.b >= 0 ? '+' : ''}${cell.rgbNoise.b.toFixed(1)}]</span>
       `;
 
       cellEl.addEventListener('click', () => {
@@ -317,52 +329,100 @@ class ExplainerStudio {
     });
   }
 
-  getTwoNearbyNeighborNames(targetBreedData) {
-    if (!targetBreedData || !this.allBreedFixedClusters) return '';
+  getDiffusionStats(pos, generationTime) {
+    const center = { x: this.canvas.width * 0.12, y: this.canvas.height * 0.50 };
+    const scaleX = this.noiseScaleX;
+    const scaleY = this.noiseScaleY;
+    const y = { x: (pos.x - center.x) / scaleX, y: (pos.y - center.y) / scaleY };
+    const s = 1 - generationTime;
+    const betaMin = 0.2;
+    const betaMax = 12;
+    const beta = betaMin + (betaMax - betaMin) * s;
+    const integratedBeta = betaMin * s + 0.5 * (betaMax - betaMin) * s * s;
+    const alpha = Math.exp(-0.5 * integratedBeta);
+    const dataVariance = 0.18 ** 2;
+    const variance = alpha * alpha * dataVariance + (1 - alpha * alpha);
 
-    const targetPos = targetBreedData.x1;
-    const sortedNeighbors = [...this.allBreedFixedClusters]
-      .filter(b => b.shortName !== targetBreedData.shortName && b.name !== targetBreedData.name)
-      .map(b => {
-        const dx = b.x1.x - targetPos.x;
-        const dy = b.x1.y - targetPos.y;
-        return { shortName: b.shortName, dist: Math.sqrt(dx * dx + dy * dy) };
-      })
-      .sort((a, b) => a.dist - b.dist);
+    const components = this.allBreedFixedClusters.map((breed) => {
+      const meanX = alpha * (breed.x1.x - center.x) / scaleX;
+      const meanY = alpha * (breed.x1.y - center.y) / scaleY;
+      const distanceSquared = (y.x - meanX) ** 2 + (y.y - meanY) ** 2;
+      return { breed, meanX, meanY, logWeight: -distanceSquared / (2 * variance) };
+    });
+    const maxLogWeight = Math.max(...components.map(component => component.logWeight));
+    let totalWeight = 0;
+    let weightedMeanX = 0;
+    let weightedMeanY = 0;
+    let bestComponent = components[0];
+    let bestWeight = -1;
 
-    const neighbor1 = sortedNeighbors[0] ? sortedNeighbors[0].shortName : '';
-    const neighbor2 = sortedNeighbors[1] ? sortedNeighbors[1].shortName : '';
+    components.forEach(component => {
+      const weight = Math.exp(component.logWeight - maxLogWeight);
+      totalWeight += weight;
+      weightedMeanX += weight * component.meanX;
+      weightedMeanY += weight * component.meanY;
+      if (weight > bestWeight) {
+        bestWeight = weight;
+        bestComponent = component;
+      }
+    });
 
-    if (neighbor1 && neighbor2) return ` (+ ${neighbor1}, + ${neighbor2})`;
-    if (neighbor1) return ` (+ ${neighbor1})`;
-    return '';
+    return {
+      y,
+      beta,
+      score: {
+        x: (weightedMeanX / totalWeight - y.x) / variance,
+        y: (weightedMeanY / totalWeight - y.y) / variance
+      },
+      breed: bestComponent.breed,
+      responsibility: bestWeight / totalWeight,
+      scaleX,
+      scaleY
+    };
   }
 
-  // DYNAMIC SDE STEP TARGET PREDICTION:
-  // In Diffusion SDE mode, SDE Brownian drift wanders across ALL 20 BREEDS in the pool at different step phases!
+  buildDiffusionPaths() {
+    const steps = parseInt(this.diffusionStepSelect.value, 10);
+    const dt = 1 / steps;
+    const center = { x: this.canvas.width * 0.12, y: this.canvas.height * 0.50 };
+    this.diffusionSteps = steps;
+    this.diffusionPaths = this.noiseGrid.map((cell, idx) => {
+      const rng = mulberry32(this.seed * 100003 + idx * 7919 + 17);
+      let pos = { ...cell.z0 };
+      const path = [pos];
+
+      for (let step = 0; step < steps; step++) {
+        const tau = step / steps;
+        const stats = this.getDiffusionStats(pos, tau);
+        const driftX = 0.5 * stats.beta * stats.y.x + stats.beta * stats.score.x;
+        const driftY = 0.5 * stats.beta * stats.y.y + stats.beta * stats.score.y;
+        const [noiseX, noiseY] = normalPair(rng);
+        const diffusionScale = Math.sqrt(stats.beta * dt);
+        const nextY = {
+          x: stats.y.x + driftX * dt + diffusionScale * noiseX,
+          y: stats.y.y + driftY * dt + diffusionScale * noiseY
+        };
+        pos = {
+          x: center.x + nextY.x * stats.scaleX,
+          y: center.y + nextY.y * stats.scaleY
+        };
+        path.push(pos);
+      }
+      return path;
+    });
+  }
+
   getActivePredictedBreed(t) {
-    if (this.algorithm === 'flow' || t >= 0.85) {
-      return this.fixedFlowWinner;
-    } else if (t < 0.05) {
-      return this.noiseGrid[this.selectedCellIndex] || this.fixedFlowWinner;
-    } else {
-      // In Diffusion SDE mode, SDE drift wanders across the FULL 20-BREED POOL at different SDE step phases!
-      const stepQuantum = Math.floor(t * 14);
-      const stepRng = mulberry32(this.seed * 777 + stepQuantum * 1337);
-      const randomFullIdx = Math.floor(stepRng() * this.allBreedFixedClusters.length);
-      return this.allBreedFixedClusters[randomFullIdx] || this.fixedFlowWinner;
-    }
+    const cell = this.noiseGrid[this.selectedCellIndex] || this.noiseGrid[0];
+    if (this.algorithm === 'flow') return cell;
+    const pos = this.computeTrajectoryPos(cell.z0, cell.x1, t, this.selectedCellIndex);
+    return this.getDiffusionStats(pos, t).breed;
   }
 
   getRealtimeParticleTarget(cell, t, idx) {
-    if (this.algorithm === 'flow' || t < 0.05 || t >= 0.85) {
-      return cell;
-    } else {
-      const stepQuantum = Math.floor(t * 14 + idx * 3);
-      const stepRng = mulberry32(this.seed * 777 + stepQuantum * 1337 + idx * 999);
-      const randFullIdx = Math.floor(stepRng() * this.allBreedFixedClusters.length);
-      return this.allBreedFixedClusters[randFullIdx] || cell;
-    }
+    if (this.algorithm === 'flow') return cell;
+    const pos = this.computeTrajectoryPos(cell.z0, cell.x1, t, idx);
+    return this.getDiffusionStats(pos, t).breed;
   }
 
   getCombinedCenterPoint(t) {
@@ -370,21 +430,26 @@ class ExplainerStudio {
     let sumY = 0;
     let totalWeight = 0;
 
-    const activeBreed = this.getActivePredictedBreed(t);
-
     for (let i = 0; i < this.noiseGrid.length; i++) {
       const cell = this.noiseGrid[i];
       const pos = this.computeTrajectoryPos(cell.z0, cell.x1, t, i);
-
-      const isWinner = cell.breedName === activeBreed.breedName;
-      const weight = isWinner ? (1.0 + t * 6.0) : 1.0;
-
-      sumX += pos.x * weight;
-      sumY += pos.y * weight;
-      totalWeight += weight;
+      sumX += pos.x;
+      sumY += pos.y;
+      totalWeight += 1;
     }
 
     return { x: sumX / totalWeight, y: sumY / totalWeight };
+  }
+
+  getPriorBounds() {
+    const center = { x: this.canvas.width * 0.12, y: this.canvas.height * 0.50 };
+    const halfSize = Math.min(this.canvas.width * 0.095, this.canvas.height * 0.17);
+    return {
+      x: center.x - halfSize,
+      y: center.y - halfSize,
+      width: halfSize * 2,
+      height: halfSize * 2
+    };
   }
 
   getVelocityVector(cell, t, idx) {
@@ -392,24 +457,30 @@ class ExplainerStudio {
 
     if (this.algorithm === 'flow') {
       return {
-        vx: (cell.x1.x - cell.z0.x) * 0.15,
-        vy: (cell.x1.y - cell.z0.y) * 0.15,
+        vx: (cell.x1.x - cell.z0.x) / this.noiseScaleX,
+        vy: (cell.x1.y - cell.z0.y) / this.noiseScaleY,
         isConstant: true
       };
     } else {
-      const targetPt = this.getRealtimeParticleTarget(cell, t, idx).x1;
-
-      const dirX = targetPt.x - pos.x;
-      const dirY = targetPt.y - pos.y;
-      const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
-
-      const speedMagnitude = Math.min(65, dist * 0.45);
+      const stats = this.getDiffusionStats(pos, t);
       return {
-        vx: (dirX / dist) * speedMagnitude,
-        vy: (dirY / dist) * speedMagnitude,
+        vx: 0.5 * stats.beta * stats.y.x + stats.beta * stats.score.x,
+        vy: 0.5 * stats.beta * stats.y.y + stats.beta * stats.score.y,
         isConstant: false
       };
     }
+  }
+
+  getCurrentRgbLatent(cell, pos) {
+    const center = { x: this.canvas.width * 0.12, y: this.canvas.height * 0.50 };
+    const x = (pos.x - center.x) / this.noiseScaleX;
+    const y = (pos.y - center.y) / this.noiseScaleY;
+    const mean = (cell.rgbNoise.r + cell.rgbNoise.g + cell.rgbNoise.b) / 3;
+    return {
+      r: x / Math.sqrt(2) + y / Math.sqrt(6) + mean,
+      g: -x / Math.sqrt(2) + y / Math.sqrt(6) + mean,
+      b: -2 * y / Math.sqrt(6) + mean
+    };
   }
 
   updateSelectedCellDetail() {
@@ -417,30 +488,31 @@ class ExplainerStudio {
     if (!cell) return;
 
     const activeBreed = this.getActivePredictedBreed(this.currentTime);
-    const centerPt = this.getCombinedCenterPoint(this.currentTime);
     const velVector = this.getVelocityVector(cell, this.currentTime, this.selectedCellIndex);
-
-    const minDist = Math.sqrt((centerPt.x - activeBreed.x1.x)**2 + (centerPt.y - activeBreed.x1.y)**2);
     this.winningBreed = activeBreed;
 
-    const confidence = Math.max(0, Math.min(100, Math.floor(100 - (minDist / 1.8))));
-    const mainShortName = activeBreed.shortName || activeBreed.breedName;
-    const neighborText = this.getTwoNearbyNeighborNames(activeBreed);
-
-    this.selectedCellName.textContent = `${cell.name} 임베딩 (시드 #${this.seed})`;
-    this.selectedCellVal.textContent = `초기 노이즈 z0 [${cell.r}, ${cell.g}, ${cell.b}]`;
-    this.selectedCellTarget.textContent = `${cell.breedName}`;
-
     const isDiff = this.algorithm === 'diff';
-    const isEarly = this.currentTime < 0.85;
-    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '';
+    const pos = this.computeTrajectoryPos(cell.z0, cell.x1, this.currentTime, this.selectedCellIndex);
+    const rgbZt = this.getCurrentRgbLatent(cell, pos);
+    const confidence = isDiff
+      ? Math.round(this.getDiffusionStats(pos, this.currentTime).responsibility * 100)
+      : 100;
+    const mainShortName = activeBreed.shortName || activeBreed.breedName;
 
-    if (this.metricVectorVal) this.metricVectorVal.textContent = `[v_x: ${velVector.vx > 0 ? '+' : ''}${velVector.vx.toFixed(1)}, v_y: ${velVector.vy > 0 ? '+' : ''}${velVector.vy.toFixed(1)}]`;
-    if (this.metricVectorStatus) this.metricVectorStatus.textContent = velVector.isConstant ? `${cell.name} 고정 속도장 (Constant OT Flow)` : `${cell.name} 실시간 회전 속도장 (Dynamic SDE Drift)`;
-    if (this.metricNearestName) this.metricNearestName.textContent = `${labelPrefix}${mainShortName}`;
+    this.selectedCellName.textContent = `z₀-${cell.name} (시드 #${this.seed})`;
+    this.selectedCellVal.textContent = `RGB z₀ = [${cell.rgbNoise.r >= 0 ? '+' : ''}${cell.rgbNoise.r.toFixed(2)}, ${cell.rgbNoise.g >= 0 ? '+' : ''}${cell.rgbNoise.g.toFixed(2)}, ${cell.rgbNoise.b >= 0 ? '+' : ''}${cell.rgbNoise.b.toFixed(2)}]`;
+    this.selectedCellProjection.textContent = `2D 투영 π(z₀) = [${cell.noiseValue.x >= 0 ? '+' : ''}${cell.noiseValue.x.toFixed(2)}, ${cell.noiseValue.y >= 0 ? '+' : ''}${cell.noiseValue.y.toFixed(2)}]`;
+    this.selectedCellTarget.textContent = isDiff ? `${mainShortName} (현재 score mode)` : `${cell.breedName} (조건부 pairing)`;
+
+    if (this.metricRgbZt) this.metricRgbZt.textContent = `[${rgbZt.r >= 0 ? '+' : ''}${rgbZt.r.toFixed(2)}, ${rgbZt.g >= 0 ? '+' : ''}${rgbZt.g.toFixed(2)}, ${rgbZt.b >= 0 ? '+' : ''}${rgbZt.b.toFixed(2)}]`;
+    if (this.metricVectorVal) this.metricVectorVal.textContent = `[x: ${velVector.vx > 0 ? '+' : ''}${velVector.vx.toFixed(1)}, y: ${velVector.vy > 0 ? '+' : ''}${velVector.vy.toFixed(1)}]`;
+    if (this.metricVectorLabel) this.metricVectorLabel.innerHTML = isDiff ? 'reverse-SDE drift b<sub>τ</sub>:' : '조건부 목표 u<sub>τ</sub>:';
+    if (this.metricVectorStatus) this.metricVectorStatus.textContent = isDiff ? 'score + VP drift (시간에 따라 변화)' : '선택한 한 쌍에서만 일정';
+    if (this.metricNearestName) this.metricNearestName.textContent = `${mainShortName}`;
+    if (this.metricConfidenceLabel) this.metricConfidenceLabel.textContent = isDiff ? 'mode posterior responsibility:' : '조건부 pairing:';
     if (this.metricConfidence) this.metricConfidence.textContent = `${confidence}%`;
     if (this.metricConfBar) this.metricConfBar.style.width = `${confidence}%`;
-    if (this.targetBreedBadge) this.targetBreedBadge.textContent = `${labelPrefix}최고 밀도: ${mainShortName}${neighborText}`;
+    if (this.targetBreedBadge) this.targetBreedBadge.textContent = isDiff ? `τ=${this.currentTime.toFixed(2)} score mode: ${mainShortName}` : `조건부 목적지: ${mainShortName}`;
   }
 
   renderEvolutionCanvases() {
@@ -453,10 +525,12 @@ class ExplainerStudio {
       const h = evoCanvas.height;
       ectx.clearRect(0, 0, w, h);
 
-      const cell = this.noiseGrid[this.selectedCellIndex] || this.fixedFlowWinner;
+      const cell = this.noiseGrid[this.selectedCellIndex] || this.noiseGrid[0];
       if (!cell) return;
-
-      this.drawDenoisedCatOnContext(ectx, w, h, cell, t);
+      const breedData = this.algorithm === 'diff'
+        ? this.getDiffusionStats(this.computeTrajectoryPos(cell.z0, cell.x1, t, this.selectedCellIndex), t).breed
+        : cell;
+      this.drawDenoisedCatOnContext(ectx, w, h, breedData, t);
     });
   }
 
@@ -469,10 +543,13 @@ class ExplainerStudio {
     if (isNoisePhase) {
       const imgData = ctx.createImageData(w, h);
       const data = imgData.data;
+      const rng = mulberry32(this.seed * 65537 + (breedData.id || this.selectedCellIndex) * 257);
       for (let i = 0; i < data.length; i += 4) {
-        data[i] = Math.floor(Math.random() * 255);
-        data[i+1] = Math.floor(Math.random() * 255);
-        data[i+2] = Math.floor(Math.random() * 255);
+        const [noiseR, noiseG] = normalPair(rng);
+        const [noiseB] = normalPair(rng);
+        data[i] = Math.max(0, Math.min(255, 128 + noiseR * 52));
+        data[i+1] = Math.max(0, Math.min(255, 128 + noiseG * 52));
+        data[i+2] = Math.max(0, Math.min(255, 128 + noiseB * 52));
         data[i+3] = 255;
       }
       ctx.putImageData(imgData, 0, 0);
@@ -565,19 +642,6 @@ class ExplainerStudio {
         ctx.beginPath(); ctx.ellipse(0, 12, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
       }
 
-    } else {
-      ctx.fillStyle = mainColor;
-      if (t >= 0.20) {
-        ctx.fillRect(-75, 5, 150, 28);
-        ctx.beginPath(); ctx.arc(-5, 5, 38, Math.PI, 0); ctx.fill();
-      }
-      if (t >= 0.55) {
-        ctx.fillStyle = '#334155';
-        ctx.beginPath();
-        ctx.arc(-45, 30, 14, 0, Math.PI * 2);
-        ctx.arc(45, 30, 14, 0, Math.PI * 2);
-        ctx.fill();
-      }
     }
 
     ctx.restore();
@@ -586,9 +650,11 @@ class ExplainerStudio {
       const noiseAlpha = (1 - t) * 0.75;
       const overlayData = ctx.getImageData(0, 0, w, h);
       const pix = overlayData.data;
+      const rng = mulberry32(this.seed * 8191 + Math.floor(t * 100) * 131 + (breedData.id || this.selectedCellIndex));
       for (let i = 0; i < pix.length; i += 4) {
-        if (Math.random() < noiseAlpha) {
-          const grain = (Math.random() - 0.5) * 180;
+        if (rng() < noiseAlpha) {
+          const [gaussian] = normalPair(rng);
+          const grain = gaussian * 45;
           pix[i] = Math.max(0, Math.min(255, pix[i] + grain));
           pix[i+1] = Math.max(0, Math.min(255, pix[i+1] + grain));
           pix[i+2] = Math.max(0, Math.min(255, pix[i+2] + grain));
@@ -615,13 +681,10 @@ class ExplainerStudio {
     ctx.textAlign = 'center';
 
     const mainShortName = breedData.shortName || breedData.breedName;
-    const neighborText = this.getTwoNearbyNeighborNames(breedData);
-
     const isDiff = this.algorithm === 'diff';
-    const isEarly = this.currentTime < 0.85;
-    const labelPrefix = (isDiff && isEarly) ? `[t=${this.currentTime.toFixed(2)} 예측] ` : '★ 최종 생성: ';
+    const labelPrefix = isDiff ? `τ=${this.currentTime.toFixed(2)} score mode: ` : '조건부 목적지: ';
     
-    ctx.fillText(`${labelPrefix}${mainShortName}${neighborText}`, w / 2, h - 10);
+    ctx.fillText(`${labelPrefix}${mainShortName}`, w / 2, h - 10);
 
     this.renderEvolutionCanvases();
   }
@@ -688,20 +751,19 @@ class ExplainerStudio {
     ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.55, w * 0.42, h * 0.38, -0.1, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.55, w * 0.46, h * 0.43, -0.1, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#a5b4fc';
     ctx.font = '600 13px Outfit';
-    ctx.fillText('전체 모델 데이터 분포 p(x) [개, 고양이, 자동차...]', w * 0.15, h * 0.20);
+    ctx.fillText('2D toy 데이터 공간 [개, 고양이]', w * 0.15, h * 0.20);
     ctx.restore();
 
     // 2. Prompt Class Distributions
     const promptConfigs = [
-      { id: 'cat', label: '고양이 분포 p(x|"고양이")', center: { x: w * 0.65, y: h * 0.45 }, rx: 130, ry: 95, color: '#38bdf8' },
-      { id: 'dog', label: '강아지 분포 p(x|"강아지")', center: { x: w * 0.62, y: h * 0.75 }, rx: 120, ry: 80, color: '#f59e0b' },
-      { id: 'car', label: '자동차 분포 p(x|"자동차")', center: { x: w * 0.35, y: h * 0.70 }, rx: 110, ry: 75, color: '#ec4899' }
+      { id: 'cat', label: '고양이 분포 p(x|"고양이")', center: { x: w * 0.65, y: h * 0.45 }, rx: w * 0.175, ry: h * 0.250, color: '#38bdf8' },
+      { id: 'dog', label: '강아지 분포 p(x|"강아지")', center: { x: w * 0.62, y: h * 0.72 }, rx: w * 0.162, ry: h * 0.226, color: '#f59e0b' }
     ];
 
     promptConfigs.forEach(cfg => {
@@ -719,7 +781,8 @@ class ExplainerStudio {
       if (isSelected) {
         ctx.fillStyle = cfg.color;
         ctx.font = '700 13px Outfit';
-        ctx.fillText(`★ ${cfg.label}`, cfg.center.x - 70, cfg.center.y - cfg.ry + 18);
+        ctx.textAlign = 'center';
+        ctx.fillText(`★ ${cfg.label}`, cfg.center.x, cfg.center.y - cfg.ry - 16);
       }
       ctx.restore();
     });
@@ -729,12 +792,11 @@ class ExplainerStudio {
     const activeBreed = this.getActivePredictedBreed(this.currentTime);
 
     // 3. Breed Sub-Clusters on Manifold
-    // In Diffusion SDE mode, renders active target breed clusters dynamically across ALL 20 SPECIES LOCATIONS!
-    const activeClustersToDraw = (this.algorithm === 'diff' && this.currentTime < 0.85) ? this.allBreedFixedClusters : this.fixedBreedMap;
+    const activeClustersToDraw = this.algorithm === 'diff' ? this.allBreedFixedClusters : this.fixedBreedMap;
 
     if (activeClustersToDraw) {
       activeClustersToDraw.forEach((breedCluster) => {
-        const isWinner = activeBreed && (activeBreed.name === breedCluster.name || activeBreed.shortName === breedCluster.shortName);
+        const isWinner = activeBreed && (activeBreed.breedName === breedCluster.name || activeBreed.name === breedCluster.name);
         
         ctx.save();
         ctx.strokeStyle = isWinner ? '#ec4899' : `${breedCluster.color}80`;
@@ -760,18 +822,19 @@ class ExplainerStudio {
     }
 
     // 4. Initial Noise Points z0 on Left Side
+    const priorBounds = this.getPriorBounds();
     ctx.save();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.rect(w * 0.05, h * 0.35, 150, 150);
+    ctx.rect(priorBounds.x, priorBounds.y, priorBounds.width, priorBounds.height);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '600 12px JetBrains Mono';
-    ctx.fillText(`초기 노이즈 z0 (시드 #${this.seed})`, w * 0.06, h * 0.33);
+    ctx.fillText(`Gaussian prior z₀ (시드 #${this.seed})`, priorBounds.x, priorBounds.y - 12);
     ctx.restore();
 
     // 5. RENDER TRAJECTORIES & CLEAN SINGLE BREED NAME VECTOR BADGES (e.g. v_삼색이 [+42.1, -15.8])
@@ -800,12 +863,11 @@ class ExplainerStudio {
         ctx.shadowColor = '#ff007f';
         ctx.setLineDash([4, 4]);
 
+        const path = this.diffusionPaths[idx];
+        const completedStep = Math.floor(this.currentTime * this.diffusionSteps);
         ctx.beginPath();
-        for (let tStep = 0; tStep <= this.currentTime; tStep += 0.04) {
-          const stepPos = this.computeTrajectoryPos(cell.z0, cell.x1, tStep, idx);
-          if (tStep === 0) ctx.moveTo(stepPos.x, stepPos.y);
-          else ctx.lineTo(stepPos.x, stepPos.y);
-        }
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let step = 1; step <= completedStep; step++) ctx.lineTo(path[step].x, path[step].y);
         ctx.stroke();
       }
       ctx.restore();
@@ -837,20 +899,19 @@ class ExplainerStudio {
 
         this.drawArrowHead(ctx, pos.x, pos.y, endX, endY, arrowColor, strokeW);
 
-        const realtimeTarget = this.getRealtimeParticleTarget(cell, this.currentTime, idx);
-        const singleBreedName = isFlow ? cell.name : (realtimeTarget.shortName || realtimeTarget.name);
+        if (isSelectedCell) {
+          const realtimeTarget = this.getRealtimeParticleTarget(cell, this.currentTime, idx);
+          const singleBreedName = isFlow ? cell.name : (realtimeTarget.shortName || realtimeTarget.name);
+          const vecName = isFlow ? `u_${singleBreedName}` : `b_${singleBreedName}`;
 
-        ctx.save();
-        ctx.fillStyle = arrowColor;
-        ctx.font = isSelectedCell ? '700 11px JetBrains Mono' : '500 9px JetBrains Mono';
-        ctx.shadowBlur = isSelectedCell ? 8 : 0;
-        ctx.shadowColor = arrowColor;
-        
-        const isDiffEarly = (!isFlow) && (this.currentTime >= 0.05) && (this.currentTime < 0.85);
-        const vecNumText = `v_${singleBreedName}${isDiffEarly ? '(예측)' : ''} [${velVec.vx > 0 ? '+' : ''}${velVec.vx.toFixed(1)}, ${velVec.vy > 0 ? '+' : ''}${velVectorStr(velVec.vy)}]`;
-        
-        ctx.fillText(vecNumText, endX + 4, endY + (idx % 2 === 0 ? -6 : 10));
-        ctx.restore();
+          ctx.save();
+          ctx.fillStyle = arrowColor;
+          ctx.font = '700 11px JetBrains Mono';
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = arrowColor;
+          ctx.fillText(`${vecName} [${velVectorStr(velVec.vx)}, ${velVectorStr(velVec.vy)}]`, endX + 4, endY - 6);
+          ctx.restore();
+        }
       }
     });
 
@@ -888,7 +949,7 @@ class ExplainerStudio {
 
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 12px Outfit';
-      ctx.fillText('★ 통합 중심점 (x̄)', centerPt.x - 40, centerPt.y - 14);
+      ctx.fillText('★ batch mean (x̄)', centerPt.x - 40, centerPt.y - 14);
 
       ctx.restore();
     }
@@ -900,33 +961,48 @@ class ExplainerStudio {
         x: (1 - t) * z0.x + t * x1.x,
         y: (1 - t) * z0.y + t * x1.y
       };
-    } else {
-      const meanX = (1 - Math.pow(t, 0.65)) * z0.x + Math.pow(t, 0.65) * x1.x;
-      const meanY = (1 - Math.pow(t, 0.65)) * z0.y + Math.pow(t, 0.65) * x1.y;
-
-      const noiseLevel = (1 - t) * 16.0;
-      const stepPhase = Math.floor(t * 12 + seedOffset * 1.7);
-      
-      const rng1 = mulberry32(this.seed * 333 + stepPhase * 999 + seedOffset * 42);
-      const rng2 = mulberry32(this.seed * 444 + stepPhase * 888 + seedOffset * 17);
-
-      const smoothJitterX = (rng1() - 0.5) * 2.0 * noiseLevel;
-      const smoothJitterY = (rng2() - 0.5) * 2.0 * noiseLevel;
-
-      return {
-        x: meanX + smoothJitterX,
-        y: meanY + smoothJitterY
-      };
     }
+
+    const path = this.diffusionPaths[seedOffset];
+    const scaledStep = Math.max(0, Math.min(this.diffusionSteps, t * this.diffusionSteps));
+    const step = Math.floor(scaledStep);
+    const nextStep = Math.min(this.diffusionSteps, step + 1);
+    const fraction = scaledStep - step;
+    return {
+      x: path[step].x * (1 - fraction) + path[nextStep].x * fraction,
+      y: path[step].y * (1 - fraction) + path[nextStep].y * fraction
+    };
   }
 
-  hexToRgb(hex) {
-    let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 255, g: 255, b: 255 };
+  selfCheck() {
+    const path = this.diffusionPaths[0];
+    const stats = this.getDiffusionStats(path[Math.floor(path.length / 2)], 0.5);
+    const cell = this.noiseGrid[0];
+    const rgbAtStart = this.getCurrentRgbLatent(cell, cell.z0);
+    const projectedX = (cell.rgbNoise.r - cell.rgbNoise.g) / Math.sqrt(2);
+    const projectedY = (cell.rgbNoise.r + cell.rgbNoise.g - 2 * cell.rgbNoise.b) / Math.sqrt(6);
+    const priorBounds = this.getPriorBounds();
+    const allNoiseInsidePrior = this.noiseGrid.every(noise =>
+      noise.z0.x >= priorBounds.x &&
+      noise.z0.x <= priorBounds.x + priorBounds.width &&
+      noise.z0.y >= priorBounds.y &&
+      noise.z0.y <= priorBounds.y + priorBounds.height
+    );
+    if (
+      path.length !== this.diffusionSteps + 1 ||
+      !Number.isFinite(stats.score.x) ||
+      !Number.isFinite(stats.score.y) ||
+      stats.responsibility <= 0 ||
+      stats.responsibility > 1 ||
+      Math.abs(cell.noiseValue.x - projectedX) > 1e-12 ||
+      Math.abs(cell.noiseValue.y - projectedY) > 1e-12 ||
+      Math.abs(cell.rgbNoise.r - rgbAtStart.r) > 1e-12 ||
+      Math.abs(cell.rgbNoise.g - rgbAtStart.g) > 1e-12 ||
+      Math.abs(cell.rgbNoise.b - rgbAtStart.b) > 1e-12 ||
+      !allNoiseInsidePrior
+    ) {
+      throw new Error('Diffusion toy model self-check failed');
+    }
   }
 
   toggleRecording() {
