@@ -65,6 +65,7 @@ class ExplainerStudio {
 
     this.btnModeFlow = document.getElementById('btn-mode-flow');
     this.btnModeDiff = document.getElementById('btn-mode-diff');
+    this.btnToggleVectors = document.getElementById('btn-toggle-vectors');
 
     this.btnPlayPause = document.getElementById('btn-play-pause');
     this.btnReset = document.getElementById('btn-reset');
@@ -86,6 +87,7 @@ class ExplainerStudio {
     this.diffusionNoiseRun = 0;
     this.dataModeSigma = 0.18;
     this.modeBoundarySigma = 2.5;
+    this.showVectors = true;
 
     // Data Structures
     this.noiseGrid = [];
@@ -108,9 +110,11 @@ class ExplainerStudio {
   }
 
   initCanvasSize() {
-    const rect = this.canvas.parentElement.getBoundingClientRect();
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height;
+    const rect = this.canvas && this.canvas.parentElement ? this.canvas.parentElement.getBoundingClientRect() : null;
+    const w = (rect && rect.width > 50) ? rect.width : 800;
+    const h = (rect && rect.height > 50) ? rect.height : 520;
+    this.canvas.width = w;
+    this.canvas.height = h;
   }
 
   setupEventListeners() {
@@ -160,6 +164,21 @@ class ExplainerStudio {
       this.updateSelectedCellDetail();
       this.renderTargetImage();
     });
+
+    if (this.btnToggleVectors) {
+      this.btnToggleVectors.addEventListener('click', () => {
+        this.showVectors = !this.showVectors;
+        if (this.showVectors) {
+          this.btnToggleVectors.classList.add('active');
+          this.btnToggleVectors.innerHTML = '<i data-lucide="eye"></i> 분해 벡터 표시 [ON]';
+        } else {
+          this.btnToggleVectors.classList.remove('active');
+          this.btnToggleVectors.innerHTML = '<i data-lucide="eye-off"></i> 분해 벡터 표시 [OFF]';
+        }
+        if (window.lucide) { try { lucide.createIcons(); } catch(e){} }
+        this.updateSelectedCellDetail();
+      });
+    }
 
     this.scrubber.addEventListener('input', (e) => {
       this.currentTime = parseInt(e.target.value) / 1000;
@@ -353,7 +372,7 @@ class ExplainerStudio {
       
       cellEl.innerHTML = `
         <span class="cell-name">${cell.name} (${cell.targetShortName})</span>
-        <span class="cell-val">[${cell.rgbNoise.r >= 0 ? '+' : ''}${cell.rgbNoise.r.toFixed(1)},${cell.rgbNoise.g >= 0 ? '+' : ''}${cell.rgbNoise.g.toFixed(1)},${cell.rgbNoise.b >= 0 ? '+' : ''}${cell.rgbNoise.b.toFixed(1)}]</span>
+        <span class="cell-val">[${cell.r}, ${cell.g}, ${cell.b}]</span>
       `;
 
       cellEl.addEventListener('click', () => {
@@ -568,6 +587,17 @@ class ExplainerStudio {
     }
   }
 
+  hexToRgb(hex) {
+    if (!hex) return { r: 200, g: 150, b: 100 };
+    const clean = hex.replace('#', '');
+    const num = parseInt(clean, 16);
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255
+    };
+  }
+
   getCurrentRgbLatent(cell, pos) {
     const center = { x: this.canvas.width * 0.12, y: this.canvas.height * 0.50 };
     const x = (pos.x - center.x) / this.noiseScaleX;
@@ -578,6 +608,18 @@ class ExplainerStudio {
       g: -x / Math.sqrt(2) + y / Math.sqrt(6) + mean,
       b: -2 * y / Math.sqrt(6) + mean
     };
+  }
+
+  getCurrentRgbPixel(cell, pos) {
+    const t = Math.max(0, Math.min(1, this.currentTime));
+    const breed = this.winningBreed || cell;
+    const targetRgb = this.hexToRgb(breed.color || '#ec4899');
+    
+    const r = Math.max(0, Math.min(255, Math.round((1 - t) * cell.r + t * targetRgb.r)));
+    const g = Math.max(0, Math.min(255, Math.round((1 - t) * cell.g + t * targetRgb.g)));
+    const b = Math.max(0, Math.min(255, Math.round((1 - t) * cell.b + t * targetRgb.b)));
+    
+    return { r, g, b };
   }
 
   renderModeResponsibilities(responsibilities, outsideWeight = 0) {
@@ -623,7 +665,7 @@ class ExplainerStudio {
 
     const isDiff = this.algorithm === 'diff';
     const pos = this.computeTrajectoryPos(cell.z0, cell.x1, this.currentTime, this.selectedCellIndex);
-    const rgbZt = this.getCurrentRgbLatent(cell, pos);
+    const rgbZt = this.getCurrentRgbPixel(cell, pos);
     const stepComponent = this.getDiffusionStepComponent(this.currentTime, this.selectedCellIndex);
     const diffusionStats = isDiff ? this.getDiffusionStats(pos, this.currentTime) : null;
     const finalStatus = isDiff && this.currentTime >= 0.999 ? this.getFinalModeStatus(pos) : null;
@@ -631,18 +673,18 @@ class ExplainerStudio {
     const mainShortName = activeBreed.shortName || activeBreed.breedName;
 
     this.selectedCellName.textContent = `z₀-${cell.name} (시드 #${this.seed})`;
-    this.selectedCellVal.textContent = `RGB z₀ = [${cell.rgbNoise.r >= 0 ? '+' : ''}${cell.rgbNoise.r.toFixed(2)}, ${cell.rgbNoise.g >= 0 ? '+' : ''}${cell.rgbNoise.g.toFixed(2)}, ${cell.rgbNoise.b >= 0 ? '+' : ''}${cell.rgbNoise.b.toFixed(2)}]`;
+    this.selectedCellVal.innerHTML = `RGB 픽셀 = [${cell.r}, ${cell.g}, ${cell.b}]<br><span style="opacity: 0.85; font-size: 0.88em;">(z₀ 노이즈: [${cell.rgbNoise.r >= 0 ? '+' : ''}${cell.rgbNoise.r.toFixed(2)}, ${cell.rgbNoise.g >= 0 ? '+' : ''}${cell.rgbNoise.g.toFixed(2)}, ${cell.rgbNoise.b >= 0 ? '+' : ''}${cell.rgbNoise.b.toFixed(2)}])</span>`;
     this.selectedCellProjection.textContent = `2D 투영 π(z₀) = [${cell.noiseValue.x >= 0 ? '+' : ''}${cell.noiseValue.x.toFixed(2)}, ${cell.noiseValue.y >= 0 ? '+' : ''}${cell.noiseValue.y.toFixed(2)}]`;
     this.selectedCellTarget.textContent = isDiff
       ? (finalStatus ? finalStatus.label : `${mainShortName} (가장 큰 영향 mode)`)
       : `${cell.breedName} (조건부 pairing)`;
 
-    if (this.metricRgbZt) this.metricRgbZt.textContent = `[${rgbZt.r >= 0 ? '+' : ''}${rgbZt.r.toFixed(2)}, ${rgbZt.g >= 0 ? '+' : ''}${rgbZt.g.toFixed(2)}, ${rgbZt.b >= 0 ? '+' : ''}${rgbZt.b.toFixed(2)}]`;
+    if (this.metricRgbZt) this.metricRgbZt.textContent = `[${rgbZt.r}, ${rgbZt.g}, ${rgbZt.b}]`;
     if (this.metricVectorVal) this.metricVectorVal.textContent = `[x: ${velVector.vx > 0 ? '+' : ''}${velVector.vx.toFixed(1)}, y: ${velVector.vy > 0 ? '+' : ''}${velVector.vy.toFixed(1)}]`;
     if (this.metricVectorLabel) this.metricVectorLabel.innerHTML = isDiff ? 'reverse-SDE drift b<sub>τ</sub>:' : '조건부 목표 u<sub>τ</sub>:';
     if (this.metricVectorStatus) this.metricVectorStatus.textContent = isDiff ? 'score + VP drift (시간에 따라 변화)' : '선택한 한 쌍에서만 일정';
-    this.diffusionStepBreakdown.hidden = !isDiff;
-    if (isDiff && stepComponent) {
+    this.diffusionStepBreakdown.hidden = !isDiff || !this.showVectors;
+    if (isDiff && stepComponent && this.showVectors) {
       const formatStep = vector => `[${vector.x >= 0 ? '+' : ''}${vector.x.toFixed(2)}, ${vector.y >= 0 ? '+' : ''}${vector.y.toFixed(2)}]`;
       this.metricDriftStep.textContent = formatStep(stepComponent.drift);
       this.metricNoiseStep.textContent = formatStep(stepComponent.noise);
@@ -918,7 +960,11 @@ class ExplainerStudio {
       this.recTimer.textContent = elapsed + 's';
     }
 
-    this.renderManifold();
+    try {
+      this.renderManifold();
+    } catch (e) {
+      console.error('Render manifold error:', e);
+    }
     requestAnimationFrame((ts) => this.loop(ts));
   }
 
@@ -1125,7 +1171,7 @@ class ExplainerStudio {
         : this.getDiffusionPosition(this.currentTime, idx);
       const velVec = this.getVelocityVector(cell, this.currentTime, idx);
 
-      if (isSelectedCell && !isFlow) {
+      if (isSelectedCell && !isFlow && this.showVectors) {
         this.drawModeCandidateRays(ctx, pos, this.getDiffusionStats(pos, this.currentTime));
       }
 
@@ -1164,7 +1210,7 @@ class ExplainerStudio {
       if (isSelectedCell) ctx.stroke();
       ctx.restore();
 
-      if (isSelectedCell && this.currentTime < 0.98) {
+      if (isSelectedCell && this.currentTime < 0.98 && this.showVectors) {
         if (isFlow) {
           const vecNorm = Math.sqrt(velVec.vx * velVec.vx + velVec.vy * velVec.vy) || 1;
           const endX = pos.x + (velVec.vx / vecNorm) * 48;
@@ -1354,6 +1400,10 @@ class ExplainerStudio {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    window.explainer = new ExplainerStudio();
+  });
+} else {
   window.explainer = new ExplainerStudio();
-});
+}

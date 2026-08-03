@@ -58,7 +58,7 @@
 
         <!-- 3x3 Noise Grid Matrix (A~I) - Reverted to Static z0 Initial Noise -->
         <div class="noise-matrix-container">
-          <div class="matrix-label">3×3 Gaussian RGB 샘플</div>
+          <div class="matrix-label">3×3 Gaussian RGB 샘플 (범위: 0~255)</div>
           <div class="matrix-grid" id="noise-matrix-grid">
             <!-- Rendered by JS: Cells A, B, C, D, E, F, G, H, I -->
           </div>
@@ -104,6 +104,9 @@
             </button>
             <button id="btn-mode-diff" class="btn btn-sm btn-algo">
               <span class="dashed-line-icon">┈┈</span> Diffusion (reverse SDE)
+            </button>
+            <button id="btn-toggle-vectors" class="btn btn-sm btn-algo active" title="드리프트(Drift), 노이즈(Noise), 스코어 수평선 등 분해 벡터 표시를 켜고 끕니다.">
+              <i data-lucide="eye"></i> 분해 벡터 표시 [ON]
             </button>
           </div>
         </div>
@@ -174,8 +177,8 @@
         <!-- Velocity Vector Metric Box -->
         <div class="distance-metric-box card-inner">
           <div class="metric-row">
-            <span title="현재 2D 경로 좌표에 대응하며, 초기 RGB의 평균 성분을 유지한 값">현재 RGB z<sub>τ</sub>:</span>
-            <strong id="metric-rgb-zt" class="font-mono">[+0.00, +0.00, +0.00]</strong>
+            <span title="현재 생성 단계의 실제 RGB 픽셀 색상값 (0~255)">현재 RGB 픽셀:</span>
+            <strong id="metric-rgb-zt" class="font-mono">[128, 128, 128]</strong>
           </div>
           <div class="metric-row">
             <span id="metric-vector-label">조건부 목표 u<sub>τ</sub>:</span>
